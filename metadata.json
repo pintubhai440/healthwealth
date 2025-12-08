@@ -1,0 +1,9 @@
+{
+  "name": "MediGuard AI",
+  "description": "A comprehensive AI health assistant featuring smart triage, medication verification, dermatology screening, and a live recovery coach.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
