@@ -17,7 +17,7 @@ export const runTriageTurn = async (
 ) => {
   const isFinalTurn = step >= 2;
   // Default to Pro for final turn, Flash for questions
-  let model = isFinalTurn ? 'gemini-3-pro-preview' : 'gemini-2.5-flash';
+  let model = isFinalTurn ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -89,7 +89,7 @@ export const runTriageTurn = async (
     console.error("Triage Error with model", model, error);
     
     // Fallback logic: If Pro fails, try Flash
-    if (model === 'gemini-3-pro-preview') {
+    if (model === 'gemini-2.5-pro') {
       try {
         console.log("Retrying with gemini-2.5-flash...");
         const fallbackResponse = await generate('gemini-2.5-flash');
@@ -166,7 +166,7 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  const model = 'gemini-3-pro-preview'; // High reasoning for medical image analysis
+  const model = 'gemini-2.5-pro'; // High reasoning for medical image analysis
   
   let prompt = "";
   if (type === 'MEDICINE') {
