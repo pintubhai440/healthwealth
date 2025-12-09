@@ -9,7 +9,7 @@ const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
 if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
 const ai = new GoogleGenAI({ apiKey: apiKey1 });
 
-// Client 2: Use Second Key (Fallback to First if missing)
+// Client 2: Second Key (Try to use this primarily for Lite model)
 const apiKey2 = process.env.API_KEY_2 || apiKey1;
 const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
 
@@ -25,9 +25,9 @@ const cleanJSON = (text: string) => {
   }
 };
 
-// 👇 CRITICAL FIX: Using 'gemini-2.0-flash' 
-// (Alive per your screenshot & distinct quota from 2.5)
-const MODEL_NAME = 'gemini-2.0-flash'; 
+// 👇 SOLUTION: Using 'Lite' model. 
+// Ye model stable hai aur iska quota main models se alag hota hai.
+const MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
 // 1. TRIAGE CHAT
@@ -68,7 +68,8 @@ export const runTriageTurn = async (
     .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
 
   try {
-    const response = await ai.models.generateContent({
+    // Uses Scanner Client (Key 2) for better luck with quota
+    const response = await aiScanner.models.generateContent({
       model,
       contents: [
         ...cleanHistory,
@@ -83,7 +84,6 @@ export const runTriageTurn = async (
     
     const text = response.text || "I couldn't generate a response.";
     
-    // Maps handling
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const groundingUrls = mapChunks
       .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
@@ -104,7 +104,7 @@ export const runTriageTurn = async (
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiScanner.models.generateContent({
       model: MODEL_NAME,
       contents: {
         parts: [
@@ -126,10 +126,10 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 
 export const generateTTS = async (text: string) => {
   try {
-    // 2.0 Flash Exp for TTS is consistent with 2.0 Flash usage
-    const model = 'gemini-2.0-flash-exp'; 
+    // Lite models generally don't support TTS directly, trying Flash TTS
+    // Using apiKey1 (older key) for this specific task
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-2.5-flash-tts', // As seen in your screenshot
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
@@ -152,7 +152,7 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // Using 2.0 Flash (Supports Images) and Key 2
+  // Using Flash-Lite for images
   const model = MODEL_NAME; 
   
   let prompt = "";
@@ -184,7 +184,7 @@ export const analyzeImage = async (
     return cleanJSON(response.text || "{}");
   } catch (error: any) {
     console.error("MediScanner Error:", error);
-    return { error: `AI Error: Please try again. (${error.message || 'Unknown'})` };
+    return { error: `AI Error: Please try again. (${error.message || 'Quota Exceeded'})` };
   }
 };
 
@@ -224,7 +224,7 @@ export const generateDietPlan = async (condition: string) => {
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
-    const response = await ai.models.generateContent({
+    const response = await aiScanner.models.generateContent({
       model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json" }
