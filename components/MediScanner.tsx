@@ -11,9 +11,9 @@ import emailjs from '@emailjs/browser';
 // 3. Create Template -> Copy Template ID
 // 4. Account -> Copy Public Key
 const EMAIL_CONFIG = {
-  SERVICE_ID: "YOUR_SERVICE_ID",     // Yahan Apna Service ID daalo
-  TEMPLATE_ID: "YOUR_TEMPLATE_ID",   // Yahan Apna Template ID daalo
-  PUBLIC_KEY: "YOUR_PUBLIC_KEY"      // Yahan Apni Public Key daalo
+  SERVICE_ID: "service_bf8gm8x",     // Yahan Apna Service ID daalo
+  TEMPLATE_ID: "template_gdclmll",   // Yahan Apna Template ID daalo
+  PUBLIC_KEY: "US_ygwyKqgstVBeVe"      // Yahan Apni Public Key daalo
 };
 
 export const MediScanner: React.FC = () => {
