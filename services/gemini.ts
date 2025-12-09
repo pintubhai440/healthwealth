@@ -170,7 +170,7 @@ export const generateTTS = async (text: string) => {
   try {
     const client = getGenAIClient(); // Random Key
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash-tts', 
+      model: 'gemini-2.5-flash-preview-tts', 
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
