@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// 1. KEY ROTATION LOGIC (THE HACK 🛠️)
+// 1. KEY ROTATION LOGIC (ROBUST 🛡️)
 // ==========================================
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
@@ -17,6 +17,9 @@ const getRandomKey = () => {
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
+// Helper: Sleep function (Wait for X milliseconds)
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const generateContentWithRetry = async (modelName: string, params: any, retries = 3) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -27,7 +30,10 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
       return response; 
     } catch (error: any) {
       lastError = error;
+      // If error is 429 (Quota), wait 2 seconds then retry with new key
       if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
+         console.warn(`Attempt ${i + 1} failed (Quota). Retrying in 2s...`);
+         await sleep(2000); 
          continue; 
       }
       throw error; 
@@ -219,7 +225,7 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (NEW & FIX 🛠️)
+// 7. YOUTUBE VIDEO FINDER (NEW FIX 🛠️)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
   // We ask AI to give us the best ID directly. No API Key needed.
