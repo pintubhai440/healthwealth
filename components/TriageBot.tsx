@@ -192,7 +192,7 @@ export const TriageBot: React.FC = () => {
       <div className="bg-teal-600 p-4 text-white flex items-center justify-between">
         <div className="flex items-center gap-2">
             <Stethoscope className="w-6 h-6" />
-            <h2 className="font-bold text-lg">Smart hai Triage</h2>
+            <h2 className="font-bold text-lg">Smart Triage</h2>
         </div>
         <div className="flex items-center gap-3">
              {isSpeaking && (
