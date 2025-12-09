@@ -1,17 +1,23 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// CLIENT SETUP
+// 1. KEY ROTATION LOGIC (THE HACK) 🛠️
 // ==========================================
 
-// Client 1: First Key
-const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
-if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
-const ai = new GoogleGenAI({ apiKey: apiKey1 });
+// Get the pool of keys from vite.config.ts
+const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
-// Client 2: Second Key (Try to use this primarily for Lite model)
-const apiKey2 = process.env.API_KEY_2 || apiKey1;
-const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
+if (keysPool.length === 0) {
+  console.error("No API Keys found! Please check Vercel Env Variables.");
+} else {
+  console.log(`Loaded ${keysPool.length} API Keys for rotation.`);
+}
+
+// Helper: Pick a random key and return a FRESH client
+const getGenAIClient = () => {
+  const randomKey = keysPool[Math.floor(Math.random() * keysPool.length)];
+  return new GoogleGenAI({ apiKey: randomKey });
+};
 
 // Helper to clean JSON
 const cleanJSON = (text: string) => {
@@ -25,12 +31,11 @@ const cleanJSON = (text: string) => {
   }
 };
 
-// 👇 SOLUTION: Using 'Lite' model. 
-// Ye model stable hai aur iska quota main models se alag hota hai.
+// Model Name
 const MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 1. TRIAGE CHAT
+// 2. TRIAGE CHAT
 // ==========================================
 
 export const runTriageTurn = async (
@@ -41,6 +46,9 @@ export const runTriageTurn = async (
 ) => {
   const model = MODEL_NAME;
   
+  // Get a fresh client with a random key
+  const client = getGenAIClient();
+
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
   Current Step: ${step} (0-indexed).
@@ -68,8 +76,7 @@ export const runTriageTurn = async (
     .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
 
   try {
-    // Uses Scanner Client (Key 2) for better luck with quota
-    const response = await aiScanner.models.generateContent({
+    const response = await client.models.generateContent({
       model,
       contents: [
         ...cleanHistory,
@@ -89,27 +96,16 @@ export const runTriageTurn = async (
     
     const groundingUrls = mapChunks
       .map((c: any) => {
-        // Priority 1: Direct Map URI
         if (c.maps?.uri) {
-           return { 
-             title: c.maps.title || "Medical Center", 
-             uri: c.maps.uri,
-             source: "Google Maps"
-           };
+           return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
         }
-        // Priority 2: Web URI that looks like a map
         if (c.web?.uri && c.web.uri.includes('google.com/maps')) {
-           return {
-             title: c.web.title || "Doctor Location",
-             uri: c.web.uri,
-             source: "Google Maps"
-           };
+           return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
         }
         return null;
       })
-      .filter(item => item !== null); // Remove nulls
+      .filter(item => item !== null);
 
-    // Fallback if the previous code's method was working better for specific snippets
     if (groundingUrls.length === 0) {
         const snippets = mapChunks
             .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
@@ -120,18 +116,19 @@ export const runTriageTurn = async (
     return { text, groundingUrls };
 
   } catch (error) {
-    console.error("Triage Error:", error);
+    console.error("Triage Error (Retrying might help):", error);
     throw error;
   }
 };
 
 // ==========================================
-// 2. AUDIO TRANSCRIPTION
+// 3. AUDIO TRANSCRIPTION
 // ==========================================
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
-    const response = await aiScanner.models.generateContent({
+    const client = getGenAIClient();
+    const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: {
         parts: [
@@ -148,14 +145,13 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 };
 
 // ==========================================
-// 3. TEXT TO SPEECH
+// 4. TEXT TO SPEECH
 // ==========================================
 
 export const generateTTS = async (text: string) => {
   try {
-    // Lite models generally don't support TTS directly, trying Flash TTS
-    // Using apiKey1 (older key) for this specific task
-    const response = await ai.models.generateContent({
+    const client = getGenAIClient();
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-tts', 
       contents: { parts: [{ text }] },
       config: {
@@ -171,7 +167,7 @@ export const generateTTS = async (text: string) => {
 };
 
 // ==========================================
-// 4. IMAGE ANALYSIS (MediScanner)
+// 5. IMAGE ANALYSIS (MediScanner)
 // ==========================================
 
 export const analyzeImage = async (
@@ -179,8 +175,8 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // Using Flash-Lite for images
   const model = MODEL_NAME; 
+  const client = getGenAIClient();
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -195,7 +191,7 @@ export const analyzeImage = async (
   }
 
   try {
-    const response = await aiScanner.models.generateContent({
+    const response = await client.models.generateContent({
       model,
       contents: {
         parts: [
@@ -216,16 +212,17 @@ export const analyzeImage = async (
 };
 
 // ==========================================
-// 5. VIDEO ANALYSIS
+// 6. VIDEO ANALYSIS
 // ==========================================
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
+  const client = getGenAIClient();
   const prompt = `Analyze this video for the Guardian Alert System.
   Task: Verify if the person actually puts a pill in their mouth and swallows it.
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
   try {
-    const response = await aiScanner.models.generateContent({
+    const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: {
         parts: [
@@ -244,14 +241,15 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN
+// 7. DIET PLAN
 // ==========================================
 
 export const generateDietPlan = async (condition: string) => {
+  const client = getGenAIClient();
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
-    const response = await aiScanner.models.generateContent({
+    const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json" }
@@ -262,4 +260,5 @@ export const generateDietPlan = async (condition: string) => {
   }
 };
 
-export { ai };
+// Export one instance just for types/legacy if needed, but prefer internal usage
+export const ai = getGenAIClient();
