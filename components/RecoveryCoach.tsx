@@ -47,15 +47,16 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic (AI POWERED) ---
+  // --- Video Search Logic (AI POWERED FIX) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
       setActiveVideo(null);
       try {
+          // AI Finds the ID for us
           const videoId = await findYoutubeVideo(videoQuery);
           if(videoId) setActiveVideo(videoId);
-          else alert("No video found. Try a different keyword.");
+          else alert("Could not find a video. Try another keyword.");
       } catch(e) {
           console.error(e);
       } finally {
@@ -195,7 +196,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (AI POWERED) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (AI POWERED FIX) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -220,6 +221,7 @@ export const RecoveryCoach: React.FC = () => {
 
             {activeVideo ? (
                 <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video">
+                    {/* FIXED: Using direct ID embed instead of list search */}
                     <iframe 
                         width="100%" 
                         height="100%" 
@@ -233,7 +235,7 @@ export const RecoveryCoach: React.FC = () => {
             ) : (
                 <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
                     <Video className="w-10 h-10 mb-2 opacity-50" />
-                    <p>Search to find the best video</p>
+                    <p>Search to play video</p>
                 </div>
             )}
         </div>
