@@ -27,7 +27,7 @@ const cleanJSON = (text: string) => {
 
 // 👇 SOLUTION: Using 'Lite' model. 
 // Ye model stable hai aur iska quota main models se alag hota hai.
-const MODEL_NAME = 'gemini-2.5-flash-lite'; 
+const MODEL_NAME = 'gemini-2.0-flash-exp'; 
 
 // ==========================================
 // 1. TRIAGE CHAT
