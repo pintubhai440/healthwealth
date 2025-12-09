@@ -4,7 +4,6 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // 1. KEY ROTATION LOGIC (THE HACK 🛠️)
 // ==========================================
 
-// Get the pool of keys from vite.config.ts
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
 if (keysPool.length === 0) {
@@ -13,13 +12,14 @@ if (keysPool.length === 0) {
   console.log(`Loaded ${keysPool.length} API Keys for rotation.`);
 }
 
-// Helper: Pick a random key and return a FRESH client
 const getGenAIClient = () => {
+  // Agar pool khali hai toh crash mat hone do
+  if (keysPool.length === 0) return new GoogleGenAI({ apiKey: "MISSING_KEY" });
+  
   const randomKey = keysPool[Math.floor(Math.random() * keysPool.length)];
   return new GoogleGenAI({ apiKey: randomKey });
 };
 
-// Helper to clean JSON
 const cleanJSON = (text: string) => {
   if (!text) return {};
   try {
@@ -31,11 +31,10 @@ const cleanJSON = (text: string) => {
   }
 };
 
-// Model Name (Jaisa tumne kaha, SAME rakha hai)
-const MODEL_NAME = 'gemini-2.5-flash-lite'; 
+const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (UPDATED FOR CARDS FIX 🃏)
+// 2. TRIAGE CHAT (AGGRESSIVE CLEANER ADDED 🧹)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -44,28 +43,25 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  const model = MODEL_NAME;
-  
-  // Get a fresh client with a random key
+  const model = CHAT_MODEL_NAME;
   const client = getGenAIClient();
 
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
-  Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
   Current Step: ${step} (0-indexed).
   Protocol:
-  1. Analyze the user's complaint.
+  1. Analyze user's complaint.
   2. If Step < 2: Ask ONE concise question.
   3. If Step == 2: Provide a FINAL VERDICT.
   
-  IMPORTANT FOR STEP 2:
-  - You MUST recommend a specific type of doctor (e.g., Dermatologist, General Physician).
-  - You MUST use the 'googleMaps' tool to find real clinics near the user's location.
-  - **DO NOT** write the address or links in your text response.
-  - Just say: "I recommend seeing a [Doctor Type]. Here are some nearby options:" and let the system show the cards.
+  IMPORTANT FOR STEP 2 (VERDICT):
+  - You MUST recommend a specific doctor type.
+  - You MUST use the 'googleMaps' tool to find real clinics.
+  - **DO NOT** output the doctor list in Markdown. 
+  - Just say "I recommend seeing a [Doctor Type]. Here are some nearby options:" and STOP. Let the system handle the display.
   `;
 
   if (step >= 2) {
-    systemInstruction += " You have access to Google Maps. USE IT to find a relevant doctor nearby.";
+    systemInstruction += " You have access to Google Maps. USE IT.";
   }
 
   const tools: any[] = [];
@@ -98,42 +94,61 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
-    // 1. Try Standard Grounding Extraction (Jo Google khud deta hai)
+    // 1. Standard Google Maps Grounding
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
-        if (c.maps?.uri) {
-           return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
-        }
-        if (c.web?.uri && c.web.uri.includes('google.com/maps')) {
-           return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
-        }
+        if (c.maps?.uri) return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
+        if (c.web?.uri && c.web.uri.includes('google.com/maps')) return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
         return null;
       })
       .filter(item => item !== null);
 
-    // 2. FALLBACK: Markdown Link Parser (THE CLEANER 🧹)
-    // Agar AI ne galti se text mein links likh diye, toh unhe yahan pakad lo
-    const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/www\.google\.com\/maps[^)]+)\)/g;
-    let match;
-    while ((match = markdownLinkRegex.exec(text)) !== null) {
-        groundingUrls.push({
-            title: match[1].replace(/^\*\*|\*\*$/g, ''), // Remove bolding
-            uri: match[2],
-            source: "Google Maps"
-        });
-    }
+    // 2. AGGRESSIVE CLEANER: Convert Markdown Links to Cards 🃏
+    // Ye logic poori line ko scan karega. Agar usme map link mila, toh usse 'Card' banayega aur text se hata dega.
+    const lines = text.split('\n');
+    const cleanLines: string[] = [];
+    
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?google\.com\/maps[^)]+)\)/;
+    const bareLinkRegex = /(https?:\/\/(?:www\.)?google\.com\/maps\S+)/;
 
-    // 3. Clean the text (Text mein se wo links hata do taaki safayi rahe)
-    if (groundingUrls.length > 0) {
-        text = text.replace(markdownLinkRegex, '').replace(/\*\s*-\s*$/gm, '').trim(); 
-    }
+    lines.forEach(line => {
+        const markdownMatch = line.match(linkRegex);
+        const bareMatch = line.match(bareLinkRegex);
 
-    // 4. Final Fallback (Agar kuch bhi na mile toh search link bana do)
+        if (markdownMatch) {
+            // Case 1: [Title](Link) format
+            groundingUrls.push({
+                title: markdownMatch[1].replace(/^\*\*|\*\*$/g, '').trim(), // Remove bold stars
+                uri: markdownMatch[2],
+                source: "Google Maps"
+            });
+            // Don't add this line to text (hide it)
+        } else if (bareMatch) {
+            // Case 2: Just a raw link
+            // Try to extract a name from the line, e.g., "**Dr. Smith** - https://..."
+            const nameMatch = line.match(/\*\*([^*]+)\*\*/); 
+            const title = nameMatch ? nameMatch[1] : "View Location";
+            
+            groundingUrls.push({
+                title: title,
+                uri: bareMatch[1],
+                source: "Google Maps"
+            });
+             // Don't add this line to text
+        } else {
+            // No link, keep the line
+            cleanLines.push(line);
+        }
+    });
+
+    text = cleanLines.join('\n').trim();
+
+    // 3. Final Fallback if empty
     if (groundingUrls.length === 0 && step === 2) {
        groundingUrls.push({
          title: "Find Nearby Specialists",
-         uri: `https://www.google.com/maps/search/doctor+near+me`,
+         uri: `https://www.google.com/maps/search/doctors+near+me`,
          source: "Google Maps"
        });
     }
@@ -141,7 +156,7 @@ export const runTriageTurn = async (
     return { text, groundingUrls };
 
   } catch (error) {
-    console.error("Triage Error (Retrying might help):", error);
+    console.error("Triage Error:", error);
     throw error;
   }
 };
@@ -154,7 +169,7 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
   try {
     const client = getGenAIClient();
     const response = await client.models.generateContent({
-      model: MODEL_NAME,
+      model: CHAT_MODEL_NAME,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -170,15 +185,15 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 };
 
 // ==========================================
-// 4. TEXT TO SPEECH
+// 4. TEXT TO SPEECH (FAST MODEL 🚀)
 // ==========================================
 
 export const generateTTS = async (text: string) => {
   try {
     const client = getGenAIClient();
-    // MODEL NAME SAME RAKHA HAI JAISA TUMNE KAHA
+    // Using Flash-Exp for speed, as per your request
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash-preview-tts', 
+      model: 'gemini-2.0-flash-exp', 
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
@@ -193,47 +208,26 @@ export const generateTTS = async (text: string) => {
 };
 
 // ==========================================
-// 5. IMAGE ANALYSIS (MediScanner)
+// 5. IMAGE ANALYSIS
 // ==========================================
 
-export const analyzeImage = async (
-  base64Data: string, 
-  mimeType: string, 
-  type: 'MEDICINE' | 'DERM'
-) => {
-  const model = MODEL_NAME; 
+export const analyzeImage = async (base64Data: string, mimeType: string, type: 'MEDICINE' | 'DERM') => {
+  const model = CHAT_MODEL_NAME; 
   const client = getGenAIClient();
   
-  let prompt = "";
-  if (type === 'MEDICINE') {
-    prompt = "Identify this medicine. Return a JSON object (no markdown) with fields: name, purpose, and dosage_warning (string).";
-  } else {
-    prompt = `Analyze this skin condition. Warning: Educational purpose only. 
-    Return a JSON object (no markdown) with: 
-    - condition_name (string)
-    - verdict (enum: 'Good', 'Bad', 'Very Bad')
-    - explanation (string)
-    - recommended_action (string)`;
-  }
+  let prompt = type === 'MEDICINE' 
+    ? "Identify this medicine. Return JSON with: name, purpose, dosage_warning." 
+    : "Analyze skin condition. Return JSON with: condition_name, verdict, explanation, recommended_action.";
 
   try {
     const response = await client.models.generateContent({
       model,
-      contents: {
-        parts: [
-          { inlineData: { mimeType, data: base64Data } },
-          { text: prompt }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
+      config: { responseMimeType: "application/json" }
     });
-
     return cleanJSON(response.text || "{}");
   } catch (error: any) {
-    console.error("MediScanner Error:", error);
-    return { error: `AI Error: Please try again. (${error.message || 'Quota Exceeded'})` };
+    return { error: `AI Error: ${error.message}` };
   }
 };
 
@@ -243,25 +237,16 @@ export const analyzeImage = async (
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
   const client = getGenAIClient();
-  const prompt = `Analyze this video for the Guardian Alert System.
-  Task: Verify if the person actually puts a pill in their mouth and swallows it.
-  Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
+  const prompt = `Analyze video. Verify pill intake. Return JSON: { "action_detected", "success": boolean, "verdict_message" }`;
 
   try {
     const response = await client.models.generateContent({
-      model: MODEL_NAME,
-      contents: {
-        parts: [
-          { inlineData: { mimeType, data: base64Data } },
-          { text: prompt }
-        ]
-      },
+      model: CHAT_MODEL_NAME,
+      contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
       config: { responseMimeType: "application/json" }
     });
-
     return cleanJSON(response.text || "{}");
   } catch (error) {
-    console.error("Video Analysis Error:", error);
     return { error: "Failed to analyze video." };
   }
 };
@@ -272,12 +257,10 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 
 export const generateDietPlan = async (condition: string) => {
   const client = getGenAIClient();
-  const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
-  
   try {
     const response = await client.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt,
+      model: CHAT_MODEL_NAME,
+      contents: `Create 1-day diet plan for: ${condition}. Return JSON...`,
       config: { responseMimeType: "application/json" }
     });
     return cleanJSON(response.text || "{}");
@@ -286,5 +269,4 @@ export const generateDietPlan = async (condition: string) => {
   }
 };
 
-// Default export
 export const ai = getGenAIClient();
