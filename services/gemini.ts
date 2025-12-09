@@ -1,23 +1,19 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// CLIENT SETUP
+// CLIENT SETUP (Dual Key Support)
 // ==========================================
 
-// Client 1: Chatbot & General Use (Purani Key) -> Uses Gemini 2.5 Flash
+// Client 1: Chatbot (Uses First Key)
 const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
 const ai = new GoogleGenAI({ apiKey: apiKey1 });
 
-// Client 2: MediScanner (Nayi Key) -> Uses Gemini 2.5 Pro
-// Note: Agar API_KEY_2 set nahi hai, to ye fallback karke purani key use karega
+// Client 2: MediScanner (Uses Second Key if available)
 const apiKey2 = process.env.API_KEY_2 || apiKey1;
 const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
 
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-// JSON Response ko saaf karne ke liye (Markdown hatata hai)
+// Helper to clean JSON
 const cleanJSON = (text: string) => {
   if (!text) return {};
   try {
@@ -25,13 +21,12 @@ const cleanJSON = (text: string) => {
     return JSON.parse(clean);
   } catch (e) {
     console.error("JSON Parse Error:", e);
-    // Return empty object or error flag instead of crashing
-    return { error: "Failed to parse AI response." };
+    return { error: "AI response format error." };
   }
 };
 
 // ==========================================
-// 1. TRIAGE CHAT (Uses Gemini 2.5 Flash)
+// 1. TRIAGE CHAT (Uses Gemini 1.5 Flash)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -40,8 +35,8 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  // Aapki request ke hisaab se 2.5 Flash set kiya hai
-  const model = 'gemini-2.5-flash';
+  // 👇 FIX: Correct model name
+  const model = 'gemini-1.5-flash';
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -70,7 +65,6 @@ export const runTriageTurn = async (
     .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
 
   try {
-    // Uses 'ai' client (First Key)
     const response = await ai.models.generateContent({
       model,
       contents: [
@@ -86,7 +80,6 @@ export const runTriageTurn = async (
     
     const text = response.text || "I couldn't generate a response.";
     
-    // Maps Grounding
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const groundingUrls = mapChunks
       .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
@@ -96,20 +89,19 @@ export const runTriageTurn = async (
     return { text, groundingUrls };
 
   } catch (error) {
-    console.error(`Triage Error with model ${model}:`, error);
+    console.error("Triage Error:", error);
     throw error;
   }
 };
 
 // ==========================================
-// 2. AUDIO TRANSCRIPTION (Uses Gemini 2.5 Flash)
+// 2. AUDIO TRANSCRIPTION (Uses Gemini 1.5 Flash)
 // ==========================================
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
-  const model = 'gemini-2.5-flash';
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -125,15 +117,13 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 };
 
 // ==========================================
-// 3. TEXT TO SPEECH (Standard Model)
+// 3. TEXT TO SPEECH (Uses Gemini 2.0 Flash Exp)
 // ==========================================
 
 export const generateTTS = async (text: string) => {
-  // TTS ke liye 2.0 Flash Exp best hai, 2.5 shayad TTS support na kare abhi
-  const model = 'gemini-2.0-flash-exp'; 
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-2.0-flash-exp', // TTS works best here
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
@@ -148,7 +138,7 @@ export const generateTTS = async (text: string) => {
 };
 
 // ==========================================
-// 4. IMAGE ANALYSIS (Uses Gemini 2.5 Pro + NEW KEY)
+// 4. IMAGE ANALYSIS (Uses Gemini 1.5 Pro + Key 2)
 // ==========================================
 
 export const analyzeImage = async (
@@ -156,8 +146,8 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // Aapki request ke hisaab se 2.5 Pro set kiya hai
-  const model = 'gemini-2.5-pro'; 
+  // 👇 FIX: Use 1.5-pro (Standard powerful model)
+  const model = 'gemini-1.5-pro'; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -187,28 +177,25 @@ export const analyzeImage = async (
     });
 
     return cleanJSON(response.text || "{}");
-  } catch (error) {
+  } catch (error: any) {
     console.error("MediScanner Error:", error);
-    // Fallback error message for UI
-    return { error: "Failed to analyze image. Ensure API Key allows this model." };
+    // Return explicit error to UI
+    return { error: `AI Error: ${error.message || "Unknown error"}` };
   }
 };
 
 // ==========================================
-// 5. VIDEO ANALYSIS (Uses Gemini 2.5 Flash + NEW KEY)
+// 5. VIDEO ANALYSIS (Uses Gemini 1.5 Flash + Key 2)
 // ==========================================
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-  const model = 'gemini-2.5-flash';
-  
   const prompt = `Analyze this video for the Guardian Alert System.
   Task: Verify if the person actually puts a pill in their mouth and swallows it.
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
   try {
-    // Uses 'aiScanner' client (Second Key)
     const response = await aiScanner.models.generateContent({
-      model,
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -226,16 +213,15 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN (Uses Gemini 2.5 Flash)
+// 6. DIET PLAN (Uses Gemini 1.5 Flash)
 // ==========================================
 
 export const generateDietPlan = async (condition: string) => {
-  const model = 'gemini-2.5-flash';
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
