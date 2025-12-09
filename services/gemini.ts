@@ -37,19 +37,28 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
 };
 
 const cleanJSON = (text: string) => {
-  if (!text) return {};
+  if (!text) return [];
   try {
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    const parsed = JSON.parse(clean);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
-    return { error: "AI format error." };
+    return [];
   }
+};
+
+// 🔥 NEW HELPER: Code se ID nikaalne ke liye (100% Accurate)
+const extractYouTubeID = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
 };
 
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (FIXED PROMPT HERE ✅)
+// 2. TRIAGE CHAT (SAME AS BEFORE)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -60,7 +69,6 @@ export const runTriageTurn = async (
 ) => {
   const model = CHAT_MODEL_NAME;
 
-  // 🔥 FIXED SYSTEM INSTRUCTION: Added "Hidden Thought" rules
   let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
   
   CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
@@ -152,7 +160,7 @@ export const runTriageTurn = async (
 };
 
 // ==========================================
-// 3. AUDIO TRANSCRIPTION
+// 3. MEDIA UTILS (SAME AS BEFORE)
 // ==========================================
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
@@ -163,9 +171,6 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
   } catch (e) { return ""; }
 };
 
-// ==========================================
-// 4. TEXT TO SPEECH
-// ==========================================
 export const generateTTS = async (text: string) => {
   try {
     const response = await generateContentWithRetry('gemini-2.5-flash-preview-tts', {
@@ -176,9 +181,6 @@ export const generateTTS = async (text: string) => {
   } catch (e) { return null; }
 };
 
-// ==========================================
-// 5. IMAGE & VIDEO ANALYSIS
-// ==========================================
 export const analyzeImage = async (base64Data: string, mimeType: string, type: 'MEDICINE' | 'DERM') => {
   const prompt = type === 'MEDICINE' ? "Identify medicine. Return JSON: {name, purpose, dosage_warning}." : "Analyze skin. Return JSON: {condition_name, verdict, explanation, recommended_action}.";
   try {
@@ -200,9 +202,6 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
   } catch (e) { return { error: "Failed to analyze video." }; }
 };
 
-// ==========================================
-// 6. DIET PLAN (FIXED PROMPT)
-// ==========================================
 export const generateDietPlan = async (condition: string) => {
   const prompt = `You are a Nutritionist. Create a recovery diet plan for: ${condition}.
   RETURN ONLY PURE JSON with this exact structure (no markdown):
@@ -228,48 +227,50 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (FIXED with Google Search 🔥)
+// 7. YOUTUBE VIDEO FINDER (FIXED & ROBUST 🔥)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  const prompt = `You are a helpful assistant. Find 4 to 6 popular, relevant YouTube videos for: "${query}".
+  // AI ko bol rahe hain: "Bhai dimag mat laga, bas LINK dhoond ke de"
+  const prompt = `You are a helpful assistant. Use Google Search to find 4-5 popular, playable YouTube videos for: "${query}".
   
-  Use Google Search to find REAL, playable videos.
-  
-  Return ONLY a pure JSON array (no markdown, no backticks) with this exact structure:
+  Return ONLY a pure JSON array (no markdown). Structure:
   [
-    { "title": "Concise Video Title", "videoId": "11_char_ID" },
-    { "title": "Another Title", "videoId": "another_ID" }
+    { "title": "Exact Video Title", "url": "https://www.youtube.com/watch?v=..." }
   ]
   
-  IMPORTANT:
-  - EXTRACT the 11-character Video ID from the actual YouTube URLs you find (e.g., from 'youtube.com/watch?v=dQw4w9WgXcQ' -> 'dQw4w9WgXcQ').
-  - Ensure videoIds are valid and real.
-  `;
+  IMPORTANT: Provide the FULL YouTube link found in search results.`;
 
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
-      contents: prompt,
-      // 🔥 Added Google Search Tool here so AI finds REAL videos
-      config: { 
-          responseMimeType: "application/json",
-          tools: [{ googleSearch: {} }] 
-      }
+        contents: prompt,
+        // Google Search Tool is ON
+        config: { 
+            responseMimeType: "application/json",
+            tools: [{ googleSearch: {} }] 
+        }
     });
     
     const text = response.text || "[]";
-    const data = cleanJSON(text);
-    
-    // Ensure it's an array
-    if (Array.isArray(data)) return data;
+    const rawData = cleanJSON(text);
+
+    // 🔥 LOGIC CHANGE: URL se ID hum code se nikalenge, AI par bharosa nahi karenge
+    if (Array.isArray(rawData)) {
+        const processedData = rawData.map((item: any) => ({
+             title: item.title,
+             // Helper function ID nikalega
+             videoId: item.url ? extractYouTubeID(item.url) : null
+        })).filter((item: any) => item.videoId !== null); // Agar ID nahi mili toh list se hata do
+        
+        return processedData;
+    }
     return [];
 
   } catch (error) {
-    console.error("Video search error:", error);
+    console.error("Video Search Error:", error);
     return [];
   }
 };
 
-// Helper function needed for Triage
 const getGenAIClient = () => {
     const apiKey = getRandomKey();
     return new GoogleGenAI({ apiKey });
