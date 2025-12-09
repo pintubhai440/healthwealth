@@ -84,11 +84,38 @@ export const runTriageTurn = async (
     
     const text = response.text || "I couldn't generate a response.";
     
+    // Improved Grounding Extraction
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    
     const groundingUrls = mapChunks
-      .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
-      .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }))
-      .concat(mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri })));
+      .map((c: any) => {
+        // Priority 1: Direct Map URI
+        if (c.maps?.uri) {
+           return { 
+             title: c.maps.title || "Medical Center", 
+             uri: c.maps.uri,
+             source: "Google Maps"
+           };
+        }
+        // Priority 2: Web URI that looks like a map
+        if (c.web?.uri && c.web.uri.includes('google.com/maps')) {
+           return {
+             title: c.web.title || "Doctor Location",
+             uri: c.web.uri,
+             source: "Google Maps"
+           };
+        }
+        return null;
+      })
+      .filter(item => item !== null); // Remove nulls
+
+    // Fallback if the previous code's method was working better for specific snippets
+    if (groundingUrls.length === 0) {
+        const snippets = mapChunks
+            .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
+            .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }));
+        groundingUrls.push(...snippets);
+    }
 
     return { text, groundingUrls };
 
@@ -129,7 +156,7 @@ export const generateTTS = async (text: string) => {
     // Lite models generally don't support TTS directly, trying Flash TTS
     // Using apiKey1 (older key) for this specific task
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-tts', // As seen in your screenshot
+      model: 'gemini-2.5-flash-tts', 
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
