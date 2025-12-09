@@ -4,16 +4,16 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // CLIENT SETUP (Dual Key Support)
 // ==========================================
 
-// Client 1: Chatbot (Uses First Key)
+// Client 1: Use First Key
 const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
 if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
 const ai = new GoogleGenAI({ apiKey: apiKey1 });
 
-// Client 2: MediScanner (Uses Second Key if available)
+// Client 2: Use Second Key (if available) to distribute load
 const apiKey2 = process.env.API_KEY_2 || apiKey1;
 const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
 
-// Helper to clean JSON
+// Helper to clean JSON response (Markdown fix)
 const cleanJSON = (text: string) => {
   if (!text) return {};
   try {
@@ -26,7 +26,7 @@ const cleanJSON = (text: string) => {
 };
 
 // ==========================================
-// 1. TRIAGE CHAT (Uses Gemini 1.5 Flash)
+// 1. TRIAGE CHAT (Uses Gemini 1.5 Flash - FIXES QUOTA ERROR)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -35,8 +35,8 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  // 👇 FIX: Correct model name
-  const model = 'gemini-2.0-flash';
+  // 👇 FIX: 1.5-flash use kar rahe hain kyunki 2.5 ka quota khatam ho gaya hai
+  const model = 'gemini-1.5-flash';
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -80,6 +80,7 @@ export const runTriageTurn = async (
     
     const text = response.text || "I couldn't generate a response.";
     
+    // Maps handling
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const groundingUrls = mapChunks
       .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
@@ -95,13 +96,14 @@ export const runTriageTurn = async (
 };
 
 // ==========================================
-// 2. AUDIO TRANSCRIPTION (Uses Gemini 1.5 Flash)
+// 2. AUDIO TRANSCRIPTION
 // ==========================================
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
+    // 👇 FIX: Using 1.5-flash for reliability
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -117,13 +119,14 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 };
 
 // ==========================================
-// 3. TEXT TO SPEECH (Uses Gemini 2.0 Flash Exp)
+// 3. TEXT TO SPEECH
 // ==========================================
 
 export const generateTTS = async (text: string) => {
   try {
+    // 2.0 Flash Exp might still work for TTS specifically, if not, we handle error
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp', // TTS works best here
+      model: 'gemini-2.0-flash-exp', 
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
@@ -138,7 +141,7 @@ export const generateTTS = async (text: string) => {
 };
 
 // ==========================================
-// 4. IMAGE ANALYSIS (Uses Gemini 1.5 Pro + Key 2)
+// 4. IMAGE ANALYSIS (MediScanner)
 // ==========================================
 
 export const analyzeImage = async (
@@ -146,8 +149,8 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // 👇 FIX: Use 1.5-pro (Standard powerful model)
-  const model = 'gemini-2.5-pro'; 
+  // 👇 FIX: Using 'gemini-1.5-pro' instead of 2.5 to avoid quota errors
+  const model = 'gemini-1.5-pro'; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -162,7 +165,7 @@ export const analyzeImage = async (
   }
 
   try {
-    // Uses 'aiScanner' client (Second Key)
+    // Uses 'aiScanner' (Second Key)
     const response = await aiScanner.models.generateContent({
       model,
       contents: {
@@ -179,13 +182,12 @@ export const analyzeImage = async (
     return cleanJSON(response.text || "{}");
   } catch (error: any) {
     console.error("MediScanner Error:", error);
-    // Return explicit error to UI
     return { error: `AI Error: ${error.message || "Unknown error"}` };
   }
 };
 
 // ==========================================
-// 5. VIDEO ANALYSIS (Uses Gemini 1.5 Flash + Key 2)
+// 5. VIDEO ANALYSIS
 // ==========================================
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
@@ -194,8 +196,9 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
   try {
+    // 👇 FIX: Using 1.5-flash
     const response = await aiScanner.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -213,15 +216,16 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN (Uses Gemini 1.5 Flash)
+// 6. DIET PLAN
 // ==========================================
 
 export const generateDietPlan = async (condition: string) => {
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
+    // 👇 FIX: Using 1.5-flash
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-1.5-flash',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
