@@ -3,16 +3,8 @@ import { generateDietPlan } from '../services/gemini';
 import { Modality, GoogleGenAI } from '@google/genai';
 import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video } from 'lucide-react';
 
-// ==========================================
-// KEY ROTATION FOR LIVE SESSION 🛠️
-// ==========================================
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
-
-const getRandomKey = () => {
-  if (keysPool.length === 0) return process.env.GEMINI_API_KEY || "MISSING_KEY";
-  return keysPool[Math.floor(Math.random() * keysPool.length)];
-};
-
+const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
 
 export const RecoveryCoach: React.FC = () => {
@@ -47,38 +39,24 @@ export const RecoveryCoach: React.FC = () => {
   const handleGetDiet = async () => {
     if (!condition) return;
     setDietLoading(true);
-    // Combine Condition + Days for the AI Prompt
-    const fullQuery = `${condition} for ${days} days duration`;
     try {
-      const plan = await generateDietPlan(fullQuery);
+      const plan = await generateDietPlan(`${condition} for ${days} days`);
       setDietPlan(plan);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDietLoading(false);
-    }
+    } catch (e) { console.error(e); } 
+    finally { setDietLoading(false); }
   };
 
   // --- Live Coach Logic ---
   const startLiveSession = async () => {
     try {
       setCoachStatus("Connecting...");
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: true, 
-          video: { width: 320, height: 240 } 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 320, height: 240 } });
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
 
       const audioCtx = new AudioContextClass({ sampleRate: 16000 });
       audioContextRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
       inputSourceRef.current = source;
-      
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
 
@@ -86,33 +64,22 @@ export const RecoveryCoach: React.FC = () => {
         if (!sessionRef.current || isMuted) return;
         const inputData = e.inputBuffer.getChannelData(0);
         const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-            pcmData[i] = inputData[i] * 32767;
-        }
+        for (let i = 0; i < inputData.length; i++) pcmData[i] = inputData[i] * 32767;
         const base64Audio = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
-        
-        sessionRef.current.sendRealtimeInput({
-            media: { mimeType: "audio/pcm;rate=16000", data: base64Audio }
-        });
+        sessionRef.current.sendRealtimeInput({ media: { mimeType: "audio/pcm;rate=16000", data: base64Audio } });
       };
 
       source.connect(processor);
       processor.connect(audioCtx.destination);
 
-      const apiKey = getRandomKey();
-      const client = new GoogleGenAI({ apiKey });
-      
+      const client = new GoogleGenAI({ apiKey: getRandomKey() });
+      // LIVE MODEL (Fastest) - Using Exp model for low latency
       const session = await client.live.connect({
         model: 'gemini-2.0-flash-exp', 
         config: {
             responseModalities: [Modality.AUDIO],
-            systemInstruction: `You are a Physical Therapy Coach. 
-            User has: "${coachForm.ailment}". 
-            Exercise: "${coachForm.exerciseName}".
-            Give short, encouraging feedback.`,
-            speechConfig: {
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
-            }
+            systemInstruction: `Coach for: "${coachForm.ailment}". Exercise: "${coachForm.exerciseName}". Give short feedback.`,
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
         }
       });
 
@@ -136,12 +103,7 @@ export const RecoveryCoach: React.FC = () => {
             sessionRef.current.sendRealtimeInput({ media: { mimeType: "image/jpeg", data: base64 } });
         }
       }, 1000); 
-
-    } catch (err) {
-      console.error("Live Error:", err);
-      alert("Connection Failed. Check Quota/Network.");
-      setConnected(false);
-    }
+    } catch (err) { setConnected(false); alert("Connection Failed."); }
   };
 
   const playAudioResponse = async (base64Audio: string) => {
@@ -168,33 +130,22 @@ export const RecoveryCoach: React.FC = () => {
     if (inputSourceRef.current) inputSourceRef.current.disconnect();
     if (audioContextRef.current) audioContextRef.current.close();
     if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
-    if (videoRef.current && videoRef.current.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-    }
+    if (videoRef.current && videoRef.current.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
     setConnected(false);
     window.location.reload();
   };
 
   return (
     <div className="space-y-6">
-      {/* --- TABS NAVIGATION --- */}
+      {/* TABS */}
       <div className="flex p-1 bg-slate-200 rounded-xl overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('PLAN')}
-          className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'PLAN' ? 'bg-white shadow text-emerald-700' : 'text-slate-500'}`}
-        >
+        <button onClick={() => setActiveTab('PLAN')} className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'PLAN' ? 'bg-white shadow text-emerald-700' : 'text-slate-500'}`}>
           <Salad className="w-4 h-4" /> Diet Plan
         </button>
-        <button
-          onClick={() => setActiveTab('VIDEO')}
-          className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'VIDEO' ? 'bg-white shadow text-red-600' : 'text-slate-500'}`}
-        >
+        <button onClick={() => setActiveTab('VIDEO')} className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'VIDEO' ? 'bg-white shadow text-red-600' : 'text-slate-500'}`}>
           <Youtube className="w-4 h-4" /> Video Search
         </button>
-        <button
-          onClick={() => setActiveTab('COACH')}
-          className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'COACH' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
-        >
+        <button onClick={() => setActiveTab('COACH')} className={`flex-1 py-3 px-4 rounded-lg font-bold text-xs md:text-sm whitespace-nowrap flex items-center justify-center gap-2 ${activeTab === 'COACH' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>
           <Activity className="w-4 h-4" /> AI Coach
         </button>
       </div>
@@ -203,47 +154,23 @@ export const RecoveryCoach: React.FC = () => {
       {activeTab === 'PLAN' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-4">Recovery Diet Generator</h3>
-            
             <div className="flex flex-col md:flex-row gap-2 mb-6">
-                <input 
-                    type="text" 
-                    placeholder="Condition (e.g. Viral Fever)"
-                    value={condition}
-                    onChange={(e) => setCondition(e.target.value)}
-                    className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                
-                <select 
-                    value={days}
-                    onChange={(e) => setDays(e.target.value)}
-                    className="p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                    <option value="3">3 Days</option>
-                    <option value="5">5 Days</option>
-                    <option value="7">7 Days</option>
+                <input type="text" placeholder="Condition (e.g. Viral Fever)" value={condition} onChange={(e) => setCondition(e.target.value)} className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none" />
+                <select value={days} onChange={(e) => setDays(e.target.value)} className="p-3 border rounded-xl bg-slate-50 outline-none">
+                    <option value="3">3 Days</option><option value="7">7 Days</option>
                 </select>
-
-                <button 
-                    onClick={handleGetDiet}
-                    disabled={dietLoading || !condition}
-                    className="bg-emerald-600 text-white px-6 rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center"
-                >
+                <button onClick={handleGetDiet} disabled={dietLoading || !condition} className="bg-emerald-600 text-white px-6 rounded-xl font-bold">
                     {dietLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate"}
                 </button>
             </div>
-
             {dietPlan && (
-                <div className="space-y-4 animate-in fade-in">
-                    <div className="bg-emerald-50 p-4 rounded-xl text-emerald-800 text-sm border border-emerald-100">
-                        {dietPlan.advice}
-                    </div>
+                <div className="space-y-4">
+                    <div className="bg-emerald-50 p-4 rounded-xl text-emerald-800 text-sm">{dietPlan.advice}</div>
                     <div className="grid md:grid-cols-3 gap-4">
                         {dietPlan.meals?.map((meal: any, idx: number) => (
-                            <div key={idx} className="border border-slate-200 p-4 rounded-xl hover:bg-slate-50 transition-colors">
+                            <div key={idx} className="border p-4 rounded-xl">
                                 <h5 className="font-bold text-emerald-600 text-sm uppercase mb-2">{meal.name}</h5>
-                                <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
-                                    {meal.items.map((it: string, i: number) => <li key={i}>{it}</li>)}
-                                </ul>
+                                <ul className="list-disc list-inside text-sm text-slate-600">{meal.items.map((it: string, i: number) => <li key={i}>{it}</li>)}</ul>
                             </div>
                         ))}
                     </div>
@@ -252,7 +179,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH --- */}
+      {/* --- TAB 2: VIDEO SEARCH (NEW FEATURE) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">Exercise Video Finder</h3>
@@ -300,93 +227,21 @@ export const RecoveryCoach: React.FC = () => {
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                        <Dumbbell className="w-6 h-6 text-green-400" /> Live AI Coach
-                    </h3>
-                    <p className="text-slate-400 text-xs">Real-time posture correction</p>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${connected ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                    {connected ? "LIVE ●" : "OFFLINE"}
-                </div>
+                <h3 className="text-xl font-bold flex items-center gap-2"><Dumbbell className="w-6 h-6 text-green-400" /> Live AI Coach</h3>
+                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${connected ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>{connected ? "LIVE ●" : "OFFLINE"}</div>
             </div>
-
-            {/* SETUP FORM */}
             {!isCoachSetupDone ? (
                 <div className="space-y-4">
-                    <div>
-                        <label className="text-xs text-slate-400 uppercase">Injury / Condition</label>
-                        <input 
-                            type="text" 
-                            placeholder="e.g. Lower Back Pain"
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 mt-1 text-white focus:border-green-500 outline-none"
-                            value={coachForm.ailment}
-                            onChange={e => setCoachForm({...coachForm, ailment: e.target.value})}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-slate-400 uppercase">Exercise Name</label>
-                        <input 
-                            type="text" 
-                            placeholder="e.g. Cobra Stretch"
-                            className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 mt-1 text-white focus:border-green-500 outline-none"
-                            value={coachForm.exerciseName}
-                            onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})}
-                        />
-                    </div>
-                    <button 
-                        onClick={() => setIsCoachSetupDone(true)}
-                        disabled={!coachForm.ailment || !coachForm.exerciseName}
-                        className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold transition-all disabled:opacity-50 mt-2 flex items-center justify-center gap-2"
-                    >
-                        Open Camera <ArrowRight className="w-4 h-4" />
-                    </button>
+                    <input type="text" placeholder="Injury (e.g. Back Pain)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.ailment} onChange={e => setCoachForm({...coachForm, ailment: e.target.value})} />
+                    <input type="text" placeholder="Exercise (e.g. Squats)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.exerciseName} onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})} />
+                    <button onClick={() => setIsCoachSetupDone(true)} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold mt-2">Open Camera</button>
                 </div>
             ) : (
-                /* CAMERA VIEW */
                 <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4">
-                    <video 
-                        ref={videoRef} 
-                        muted 
-                        className={`w-full h-full object-cover transform scale-x-[-1] ${!connected && 'opacity-50'}`} 
-                    />
+                    <video ref={videoRef} muted className={`w-full h-full object-cover transform scale-x-[-1] ${!connected && 'opacity-50'}`} />
                     <canvas ref={canvasRef} className="hidden" />
-                    
-                    {!connected && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <button 
-                                onClick={startLiveSession}
-                                className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2"
-                            >
-                                <Play className="w-5 h-5 fill-current" /> Start Session
-                            </button>
-                            <button onClick={() => setIsCoachSetupDone(false)} className="mt-4 text-xs text-slate-400 underline hover:text-white">
-                                Back to Setup
-                            </button>
-                        </div>
-                    )}
-
-                    {connected && (
-                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent flex justify-between items-end">
-                            <div className="bg-slate-800/80 px-3 py-1 rounded text-sm text-green-300 border border-green-500/30 animate-pulse">
-                                {coachStatus}
-                            </div>
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={() => setIsMuted(!isMuted)} 
-                                    className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-red-500 text-white' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`}
-                                >
-                                    {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                                </button>
-                                <button 
-                                    onClick={stopSession} 
-                                    className="bg-red-600/90 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 text-sm flex items-center gap-2"
-                                >
-                                    <StopCircle className="w-4 h-4" /> End
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    {!connected && <div className="absolute inset-0 flex flex-col items-center justify-center"><button onClick={startLiveSession} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2"><Play className="w-5 h-5 fill-current" /> Start Session</button></div>}
+                    {connected && <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent flex justify-between items-end"><div className="bg-slate-800/80 px-3 py-1 rounded text-sm text-green-300 border border-green-500/30">{coachStatus}</div><div className="flex gap-2"><button onClick={() => setIsMuted(!isMuted)} className={`p-3 rounded-full ${isMuted ? 'bg-red-500' : 'bg-slate-700'}`}>{isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}</button><button onClick={stopSession} className="bg-red-600 px-4 py-2 rounded-full font-bold text-sm">End</button></div></div>}
                 </div>
             )}
         </div>
