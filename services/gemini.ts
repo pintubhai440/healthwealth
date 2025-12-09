@@ -9,7 +9,7 @@ const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
 if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
 const ai = new GoogleGenAI({ apiKey: apiKey1 });
 
-// Client 2: Second Key (Fallback to First if missing)
+// Client 2: Use Second Key (Fallback to First if missing)
 const apiKey2 = process.env.API_KEY_2 || apiKey1;
 const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
 
@@ -25,9 +25,9 @@ const cleanJSON = (text: string) => {
   }
 };
 
-// 👇 STABLE MODELS FROM CHANGELOG (Ye abhi active hain)
-const MODEL_FLASH = 'gemini-1.5-flash-002'; 
-const MODEL_PRO = 'gemini-1.5-pro-002';
+// 👇 CRITICAL FIX: Using 'gemini-2.0-flash' 
+// (Alive per your screenshot & distinct quota from 2.5)
+const MODEL_NAME = 'gemini-2.0-flash'; 
 
 // ==========================================
 // 1. TRIAGE CHAT
@@ -39,7 +39,7 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  const model = MODEL_FLASH;
+  const model = MODEL_NAME;
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -105,7 +105,7 @@ export const runTriageTurn = async (
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
     const response = await ai.models.generateContent({
-      model: MODEL_FLASH,
+      model: MODEL_NAME,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -126,8 +126,7 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 
 export const generateTTS = async (text: string) => {
   try {
-    // TTS ke liye 2.0 Flash Exp try karte hain, agar wo bhi band ho to standard use karenge
-    // Lekin Changelog ke hisab se ye abhi active hai
+    // 2.0 Flash Exp for TTS is consistent with 2.0 Flash usage
     const model = 'gemini-2.0-flash-exp'; 
     const response = await ai.models.generateContent({
       model,
@@ -153,8 +152,8 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // Using Stable Pro Model
-  const model = MODEL_PRO; 
+  // Using 2.0 Flash (Supports Images) and Key 2
+  const model = MODEL_NAME; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -200,7 +199,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 
   try {
     const response = await aiScanner.models.generateContent({
-      model: MODEL_FLASH,
+      model: MODEL_NAME,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -226,7 +225,7 @@ export const generateDietPlan = async (condition: string) => {
   
   try {
     const response = await ai.models.generateContent({
-      model: MODEL_FLASH,
+      model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
