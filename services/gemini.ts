@@ -14,7 +14,6 @@ if (keysPool.length === 0) {
 }
 
 // Helper: Pick a random key and return a FRESH client
-// Isse har request alag key se jayegi -> No Rate Limit Error!
 const getGenAIClient = () => {
   const randomKey = keysPool[Math.floor(Math.random() * keysPool.length)];
   return new GoogleGenAI({ apiKey: randomKey });
@@ -32,11 +31,11 @@ const cleanJSON = (text: string) => {
   }
 };
 
-// Model Name
+// Model Name (Jaisa tumne kaha, SAME rakha hai)
 const MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT
+// 2. TRIAGE CHAT (UPDATED FOR CARDS FIX 🃏)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -61,7 +60,8 @@ export const runTriageTurn = async (
   IMPORTANT FOR STEP 2:
   - You MUST recommend a specific type of doctor (e.g., Dermatologist, General Physician).
   - You MUST use the 'googleMaps' tool to find real clinics near the user's location.
-  - Do NOT just say "consult a doctor". Show me WHERE the doctor is.
+  - **DO NOT** write the address or links in your text response.
+  - Just say: "I recommend seeing a [Doctor Type]. Here are some nearby options:" and let the system show the cards.
   `;
 
   if (step >= 2) {
@@ -96,39 +96,46 @@ export const runTriageTurn = async (
       }
     });
     
-    const text = response.text || "I couldn't generate a response.";
+    let text = response.text || "I couldn't generate a response.";
     
-    // Improved Grounding Extraction (Maps Link nikalne ke liye)
+    // 1. Try Standard Grounding Extraction (Jo Google khud deta hai)
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    
-    const groundingUrls = mapChunks
+    let groundingUrls = mapChunks
       .map((c: any) => {
-        // Priority 1: Direct Map URI
         if (c.maps?.uri) {
-           return { 
-             title: c.maps.title || "Medical Center", 
-             uri: c.maps.uri,
-             source: "Google Maps" 
-           };
+           return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
         }
-        // Priority 2: Web URI that looks like a map
         if (c.web?.uri && c.web.uri.includes('google.com/maps')) {
-           return { 
-             title: c.web.title || "Doctor Location", 
-             uri: c.web.uri, 
-             source: "Google Maps" 
-           };
+           return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
         }
         return null;
       })
       .filter(item => item !== null);
 
-    // Fallback logic
-    if (groundingUrls.length === 0) {
-        const snippets = mapChunks
-            .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
-            .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }));
-        groundingUrls.push(...snippets);
+    // 2. FALLBACK: Markdown Link Parser (THE CLEANER 🧹)
+    // Agar AI ne galti se text mein links likh diye, toh unhe yahan pakad lo
+    const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/www\.google\.com\/maps[^)]+)\)/g;
+    let match;
+    while ((match = markdownLinkRegex.exec(text)) !== null) {
+        groundingUrls.push({
+            title: match[1].replace(/^\*\*|\*\*$/g, ''), // Remove bolding
+            uri: match[2],
+            source: "Google Maps"
+        });
+    }
+
+    // 3. Clean the text (Text mein se wo links hata do taaki safayi rahe)
+    if (groundingUrls.length > 0) {
+        text = text.replace(markdownLinkRegex, '').replace(/\*\s*-\s*$/gm, '').trim(); 
+    }
+
+    // 4. Final Fallback (Agar kuch bhi na mile toh search link bana do)
+    if (groundingUrls.length === 0 && step === 2) {
+       groundingUrls.push({
+         title: "Find Nearby Specialists",
+         uri: `https://www.google.com/maps/search/doctor+near+me`,
+         source: "Google Maps"
+       });
     }
 
     return { text, groundingUrls };
@@ -145,7 +152,7 @@ export const runTriageTurn = async (
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
-    const client = getGenAIClient(); // Random Key
+    const client = getGenAIClient();
     const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: {
@@ -168,7 +175,8 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 
 export const generateTTS = async (text: string) => {
   try {
-    const client = getGenAIClient(); // Random Key
+    const client = getGenAIClient();
+    // MODEL NAME SAME RAKHA HAI JAISA TUMNE KAHA
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts', 
       contents: { parts: [{ text }] },
@@ -194,7 +202,7 @@ export const analyzeImage = async (
   type: 'MEDICINE' | 'DERM'
 ) => {
   const model = MODEL_NAME; 
-  const client = getGenAIClient(); // Random Key
+  const client = getGenAIClient();
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -234,7 +242,7 @@ export const analyzeImage = async (
 // ==========================================
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-  const client = getGenAIClient(); // Random Key
+  const client = getGenAIClient();
   const prompt = `Analyze this video for the Guardian Alert System.
   Task: Verify if the person actually puts a pill in their mouth and swallows it.
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
@@ -263,7 +271,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 // ==========================================
 
 export const generateDietPlan = async (condition: string) => {
-  const client = getGenAIClient(); // Random Key
+  const client = getGenAIClient();
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
@@ -278,5 +286,5 @@ export const generateDietPlan = async (condition: string) => {
   }
 };
 
-// Default export for legacy compatibility, though internal functions use getGenAIClient()
+// Default export
 export const ai = getGenAIClient();
