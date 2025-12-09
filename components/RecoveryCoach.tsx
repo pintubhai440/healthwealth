@@ -1,17 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateDietPlan, findYoutubeVideo, analyzeExerciseFrame, generateTTS } from '../services/gemini';
-import { Play, Mic, MicOff, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink, StopCircle } from 'lucide-react';
+import { generateDietPlan, findYoutubeVideo, analyzeExerciseFrame } from '../services/gemini';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink, StopCircle, Volume2 } from 'lucide-react';
 
 export const RecoveryCoach: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'VIDEO' | 'COACH'>('PLAN');
 
-  // Diet State
+  // Diet & Video State
   const [condition, setCondition] = useState('');
   const [days, setDays] = useState('3');
   const [dietPlan, setDietPlan] = useState<any>(null);
   const [dietLoading, setDietLoading] = useState(false);
-
-  // Video Search State
   const [videoQuery, setVideoQuery] = useState('');
   const [videoResults, setVideoResults] = useState<Array<{ title: string; videoId: string }>>([]);
   const [videoLoading, setVideoLoading] = useState(false);
@@ -20,12 +18,27 @@ export const RecoveryCoach: React.FC = () => {
   const [isCoachActive, setIsCoachActive] = useState(false);
   const [coachForm, setCoachForm] = useState({ ailment: '', exerciseName: '' });
   const [isCoachSetupDone, setIsCoachSetupDone] = useState(false);
-  const [coachFeedback, setCoachFeedback] = useState("AI Watching...");
+  const [coachFeedback, setCoachFeedback] = useState("AI Waiting...");
   const [feedbackColor, setFeedbackColor] = useState("text-slate-200");
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<any>(null);
+
+  // 🔥 NEW: Browser Speech Function (Zero Latency)
+  const speakFeedback = (text: string) => {
+    if (!window.speechSynthesis) return;
+    
+    // Purani baat cancel karo taaki nayi baat turant bole
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US"; // English voice
+    utterance.rate = 1.1; // Thoda fast bolega
+    utterance.pitch = 1.0;
+    
+    window.speechSynthesis.speak(utterance);
+  };
 
   // --- Diet Logic ---
   const handleGetDiet = async () => {
@@ -51,48 +64,49 @@ export const RecoveryCoach: React.FC = () => {
       finally { setVideoLoading(false); }
   };
 
-  // --- NEW LIVE COACH LOGIC (Fast Polling) ---
+  // --- LIVE COACH LOGIC ---
   const startCoaching = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360 } });
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
       
       setIsCoachActive(true);
-      setCoachFeedback("Connecting to Coach...");
+      setCoachFeedback("Connecting...");
+      speakFeedback("Starting AI Coach session. Get in position.");
 
-      // Start Analysis Loop (Har 3.5 second mein check karega)
+      // Loop: Har 4 second mein check karega
       intervalRef.current = setInterval(async () => {
          if (!videoRef.current || !canvasRef.current) return;
          
-         // 1. Frame Capture karo
          const ctx = canvasRef.current.getContext('2d');
          if(ctx) {
             canvasRef.current.width = videoRef.current.videoWidth;
             canvasRef.current.height = videoRef.current.videoHeight;
             ctx.drawImage(videoRef.current, 0, 0);
-            const base64 = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
             
-            setCoachFeedback("Analyzing form...");
+            // Image Quality thodi low rakhi hai taaki fast upload ho (0.4)
+            const base64 = canvasRef.current.toDataURL('image/jpeg', 0.4).split(',')[1];
             
-            // 2. AI ko bhejo
+            setCoachFeedback("Watching...");
+            
+            // AI Analysis
             const feedback = await analyzeExerciseFrame(base64, coachForm.ailment, coachForm.exerciseName);
             
-            if (feedback) {
+            if (feedback && feedback.length > 2) {
                 setCoachFeedback(feedback);
                 
-                // Feedback ke hisab se color change
-                if (feedback.includes("STOP") || feedback.includes("Bad") || feedback.includes("Warning")) {
-                    setFeedbackColor("text-red-400 animate-pulse");
+                // Colors
+                if (feedback.toLowerCase().includes("stop") || feedback.toLowerCase().includes("bad")) {
+                    setFeedbackColor("text-red-400 font-bold animate-pulse");
                 } else {
-                    setFeedbackColor("text-green-400");
+                    setFeedbackColor("text-green-400 font-medium");
                 }
 
-                // 3. Audio mein bolo (TTS)
-                const audioData = await generateTTS(feedback);
-                if (audioData) playAudio(audioData);
+                // 🔥 Speak Result Immediately
+                speakFeedback(feedback);
             }
          }
-      }, 3500); // 3.5 seconds delay taaki AI bol sake
+      }, 4000); 
 
     } catch (err) {
       alert("Camera access failed.");
@@ -100,25 +114,16 @@ export const RecoveryCoach: React.FC = () => {
     }
   };
 
-  const playAudio = (base64: string) => {
-     try {
-         const snd = new Audio("data:audio/mp3;base64," + base64);
-         snd.play();
-     } catch(e) { console.error(e); }
-  };
-
   const stopCoaching = () => {
      setIsCoachActive(false);
      if (intervalRef.current) clearInterval(intervalRef.current);
+     if (window.speechSynthesis) window.speechSynthesis.cancel(); // Awaz band karo
      if (videoRef.current && videoRef.current.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
      }
   };
 
-  // Cleanup
-  useEffect(() => {
-     return () => stopCoaching();
-  }, []);
+  useEffect(() => { return () => stopCoaching(); }, []);
 
   return (
     <div className="space-y-6">
@@ -168,7 +173,6 @@ export const RecoveryCoach: React.FC = () => {
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
-            <p className="text-slate-500 text-sm mb-4">Smart search for Yoga & Exercises.</p>
             <div className="flex gap-2 mb-6">
                 <input type="text" placeholder="Enter Exercise name..." value={videoQuery} onChange={(e) => setVideoQuery(e.target.value)} className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none" />
                 <button onClick={handleVideoSearch} disabled={!videoQuery || videoLoading} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2">
@@ -189,11 +193,11 @@ export const RecoveryCoach: React.FC = () => {
                         </div>
                     ))}
                 </div>
-            ) : !videoLoading && <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400"><Video className="w-10 h-10 mb-2 opacity-50" /><p>Search to find videos</p></div>}
+            ) : !videoLoading && <div className="text-center text-slate-400 py-10">Search to find videos</div>}
         </div>
       )}
 
-      {/* --- TAB 3: LIVE COACH (FIXED) --- */}
+      {/* --- TAB 3: LIVE COACH (FIXED & SPEAKING) --- */}
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
@@ -221,6 +225,9 @@ export const RecoveryCoach: React.FC = () => {
 
                     {isCoachActive && (
                         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col items-center">
+                             <div className="flex items-center gap-2 mb-2 text-xs text-slate-400 uppercase tracking-widest">
+                                <Volume2 className="w-3 h-3 animate-pulse" /> AI Speaking
+                             </div>
                             <div className={`text-xl font-bold text-center mb-4 px-4 py-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 ${feedbackColor}`}>
                                 "{coachFeedback}"
                             </div>
