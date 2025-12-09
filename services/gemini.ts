@@ -7,7 +7,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
 if (keysPool.length === 0) {
-  console.warn("⚠️ Warning: No API Keys found. Using fallback.");
+  console.warn("⚠️ Warning: No API Keys found in Pool. Using fallback.");
 } else {
   console.log(`✅ Loaded ${keysPool.length} API Keys for rotation.`);
 }
@@ -49,7 +49,7 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (NO CHANGES - PERFECT STATE ✅)
+// 2. TRIAGE CHAT
 // ==========================================
 
 export const runTriageTurn = async (
@@ -59,7 +59,6 @@ export const runTriageTurn = async (
   userLocation?: { lat: number; lng: number }
 ) => {
   const model = CHAT_MODEL_NAME;
-  const client = getGenAIClient(); // Fallback instance logic if needed, but primarily used in wrapper
 
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Step: ${step}.
@@ -99,7 +98,6 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
-    // Extract Maps Data
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
@@ -109,7 +107,6 @@ export const runTriageTurn = async (
       })
       .filter(item => item !== null);
 
-    // Cleaner Logic
     const lines = text.split('\n');
     const cleanLines: string[] = [];
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?google\.com\/maps[^)]+)\)/;
@@ -129,10 +126,10 @@ export const runTriageTurn = async (
     });
     text = cleanLines.join('\n').trim();
 
-    // Smart Fallback
     if (step === 2 && groundingUrls.length < 3) {
        let doctorType = "Doctor";
        if (text.toLowerCase().includes("dermatologist")) doctorType = "Dermatologist";
+       else if (text.toLowerCase().includes("neurologist")) doctorType = "Neurologist";
        
        const needed = 3 - groundingUrls.length;
        for(let i=0; i<needed; i++) {
@@ -195,7 +192,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN (FIXED PROMPT)
+// 6. DIET PLAN
 // ==========================================
 export const generateDietPlan = async (condition: string) => {
   const prompt = `You are a Nutritionist. Create a recovery diet plan for: ${condition}.
@@ -222,12 +219,13 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (NEW 🔥)
+// 7. YOUTUBE VIDEO FINDER (NEW & FIX 🛠️)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  const prompt = `Find a popular, embeddable YouTube video ID for: "${query}". 
-  Return ONLY the 11-character Video ID string (e.g., dQw4w9WgXcQ). 
-  Do NOT return a URL. Do NOT return Markdown. Just the ID.`;
+  // We ask AI to give us the best ID directly. No API Key needed.
+  const prompt = `Find the most popular, valid, and embeddable YouTube video ID for: "${query}". 
+  Example: if query is 'Surya Namaskar', return '7c2gpGMj3TE'.
+  Return ONLY the 11-character Video ID string. Do not write anything else.`;
 
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
@@ -236,14 +234,10 @@ export const findYoutubeVideo = async (query: string) => {
     const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
     return videoId;
   } catch (error) {
+    console.error("Video Finder Error:", error);
     return null;
   }
 };
 
-// Helper function needed for Triage
-const getGenAIClient = () => {
-    const apiKey = getRandomKey();
-    return new GoogleGenAI({ apiKey });
-};
-
-export const ai = getGenAIClient();
+// Helper for live client
+export const ai = new GoogleGenAI({ apiKey: "LEGACY" });
