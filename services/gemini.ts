@@ -49,7 +49,7 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (NO CHANGES - PERFECT STATE ✅)
+// 2. TRIAGE CHAT (FIXED PROMPT HERE ✅)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -59,20 +59,26 @@ export const runTriageTurn = async (
   userLocation?: { lat: number; lng: number }
 ) => {
   const model = CHAT_MODEL_NAME;
-  const client = getGenAIClient(); // Fallback instance logic if needed, but primarily used in wrapper
 
-  let systemInstruction = `You are a Smart Triage Doctor (AI). 
-  Step: ${step}.
-  Protocol:
-  1. Analyze complaint.
-  2. Step < 2: Ask ONE concise question.
-  3. Step == 2: Provide VERDICT.
+  // 🔥 FIXED SYSTEM INSTRUCTION: Added "Hidden Thought" rules
+  let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
   
-  IMPORTANT FOR STEP 2:
-  - Recommend a specific doctor type.
-  - Use 'googleMaps' tool to find clinics.
-  - **MANDATORY**: You MUST generate exactly 3 distinct options.
-  - **DO NOT** output links in text. Just say: "I recommend a [Type]. Here are nearby options:"
+  CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
+  - Current Step: ${step}/3
+  
+  YOUR GOAL:
+  1. Analyze the user's complaint.
+  2. If Step < 2: Ask ONE concise, relevant follow-up question to clarify symptoms. Do NOT list protocols.
+  3. If Step == 2: Provide a specific VERDICT (e.g., "Likely Migraine", "Possible Infection") and recommend a doctor type.
+
+  CRITICAL RULES:
+  - **NEVER** output the text "Step:", "Protocol:", or "Analyze complaint." to the user.
+  - Speak naturally like a caring human doctor.
+  - Keep responses short (under 50 words unless giving a verdict).
+  
+  MAPPING INSTRUCTIONS (Only for Step 2):
+  - When recommending a doctor (e.g., Dermatologist), imply you are checking nearby.
+  - You MUST generate exactly 3 distinct location options using the 'googleMaps' tool if available.
   `;
 
   if (step >= 2) {
