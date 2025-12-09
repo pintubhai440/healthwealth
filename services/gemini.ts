@@ -228,21 +228,32 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (UPDATED FOR LIST 🔥)
+// 7. YOUTUBE VIDEO FINDER (FIXED with Google Search 🔥)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
   const prompt = `You are a helpful assistant. Find 4 to 6 popular, relevant YouTube videos for: "${query}".
+  
+  Use Google Search to find REAL, playable videos.
+  
   Return ONLY a pure JSON array (no markdown, no backticks) with this exact structure:
   [
     { "title": "Concise Video Title", "videoId": "11_char_ID" },
     { "title": "Another Title", "videoId": "another_ID" }
   ]
-  Ensure videoIds are valid 11-character YouTube IDs.`;
+  
+  IMPORTANT:
+  - EXTRACT the 11-character Video ID from the actual YouTube URLs you find (e.g., from 'youtube.com/watch?v=dQw4w9WgXcQ' -> 'dQw4w9WgXcQ').
+  - Ensure videoIds are valid and real.
+  `;
 
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      // 🔥 Added Google Search Tool here so AI finds REAL videos
+      config: { 
+          responseMimeType: "application/json",
+          tools: [{ googleSearch: {} }] 
+      }
     });
     
     const text = response.text || "[]";
