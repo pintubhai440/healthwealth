@@ -11,12 +11,10 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        // Purani Key
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        // OpenRouter Key
+        'process.env.OPENROUTER_API_KEY': JSON.stringify(env.OPENROUTER_API_KEY),
+        // Fallback ke liye Google keys bhi rakh sakte hain
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        
-        // 👇 Nayi Key (MediScanner ke liye)
-        'process.env.API_KEY_2': JSON.stringify(env.GEMINI_API_KEY_2)
       },
       resolve: {
         alias: {
