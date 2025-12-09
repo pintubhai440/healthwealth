@@ -1,11 +1,11 @@
-// services/gemini.ts - UPDATED FOR OPENROUTER
+// services/gemini.ts - FIXED FOR OPENROUTER
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const SITE_URL = "https://healthwealth.vercel.app"; // Your site URL
+const SITE_URL = "https://healthwealth.vercel.app"; 
 const SITE_NAME = "MediGuard AI";
 
 // Helper for OpenRouter API Calls
-const callOpenRouter = async (messages: any[], model: string = "google/gemini-2.0-flash-lite-preview-02-05") => {
+const callOpenRouter = async (messages: any[], model: string) => {
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -17,13 +17,15 @@ const callOpenRouter = async (messages: any[], model: string = "google/gemini-2.
       },
       body: JSON.stringify({
         "model": model,
-        "messages": messages
+        "messages": messages,
+        "temperature": 0.7
       })
     });
 
     if (!response.ok) {
         const err = await response.text();
-        throw new Error(`OpenRouter Error: ${err}`);
+        console.error("OpenRouter Response Error:", err);
+        throw new Error(`OpenRouter Error: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -43,7 +45,6 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  // Construct messages in OpenAI format
   const messages = [
     {
       role: "system",
@@ -62,14 +63,11 @@ export const runTriageTurn = async (
     { role: "user", content: currentInput }
   ];
 
-  // Using a free/cheap Google model via OpenRouter
-  const text = await callOpenRouter(messages, "google/gemini-2.0-flash-lite-preview-02-05:free");
+  // 👇 FIX: Using a reliable FREE model on OpenRouter
+  const text = await callOpenRouter(messages, "google/gemini-2.0-flash-exp:free");
   
-  // Fake grounding for now (OpenRouter doesn't return Google Maps metadata directly)
   let groundingUrls: any[] = [];
   if (step >= 2 && userLocation) {
-      // We can manually generate a search link
-      const query = "doctor near me";
       groundingUrls.push({
           title: "Find Doctors Nearby",
           uri: `https://www.google.com/maps/search/doctors/@${userLocation.lat},${userLocation.lng},14z`
@@ -80,27 +78,21 @@ export const runTriageTurn = async (
 };
 
 /**
- * Audio Transcription (Note: OpenRouter is mostly text/image chat)
- * We might need to stick to Google API for this or use a simple workaround.
- * For now, returning a mock or error if key is missing.
+ * Audio Transcription
  */
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
-    // OpenRouter doesn't support direct audio upload easily in this format.
-    // Return a dummy text for hackathon or fallback to Google Key if present.
-    return "Audio transcription via OpenRouter is limited. Please type your symptom.";
+    return "Audio transcription is limited on OpenRouter free tier. Please type your symptoms.";
 };
 
 /**
  * Text to Speech
  */
 export const generateTTS = async (text: string) => {
-    // OpenRouter doesn't do TTS. Return null to skip audio.
-    return null;
+    return null; // TTS not supported via simple OpenRouter chat
 };
 
 /**
  * Image Analysis (MediScanner)
- * OpenRouter supports image inputs for some models!
  */
 export const analyzeImage = async (
   base64Data: string, 
@@ -108,23 +100,28 @@ export const analyzeImage = async (
   type: 'MEDICINE' | 'DERM'
 ) => {
   let prompt = type === 'MEDICINE' 
-    ? "Identify this medicine. Return JSON: { \"name\": \"...\", \"purpose\": \"...\", \"dosage_warning\": \"...\" }"
-    : "Analyze skin. Return JSON: { \"condition_name\": \"...\", \"verdict\": \"Good/Bad\", \"explanation\": \"...\", \"recommended_action\": \"...\" }";
+    ? "Identify this medicine. Return ONLY valid JSON: { \"name\": \"...\", \"purpose\": \"...\", \"dosage_warning\": \"...\" }"
+    : "Analyze skin. Return ONLY valid JSON: { \"condition_name\": \"...\", \"verdict\": \"Good/Bad\", \"explanation\": \"...\", \"recommended_action\": \"...\" }";
 
   const messages = [
     {
       role: "user",
       content: [
         { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } }
+        { 
+          type: "image_url", 
+          image_url: { 
+            url: `data:${mimeType};base64,${base64Data}` 
+          } 
+        }
       ]
     }
   ];
 
   try {
-      // Use a vision-capable model
-      const jsonString = await callOpenRouter(messages, "google/gemini-flash-1.5");
-      // Clean and parse
+      // 👇 FIX: Using Pro Experimental Free (Best for vision)
+      const jsonString = await callOpenRouter(messages, "google/gemini-2.0-pro-exp-02-05:free");
+      
       const clean = jsonString.replace(/```json|```/g, '').trim();
       return JSON.parse(clean);
   } catch (e) {
@@ -137,7 +134,6 @@ export const analyzeImage = async (
  * Video Analysis
  */
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-    // Video is tricky via OpenRouter standard API. 
     return { error: "Video analysis not supported on OpenRouter connection yet." };
 };
 
@@ -147,7 +143,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 export const generateDietPlan = async (condition: string) => {
   const messages = [{ role: "user", content: `Create diet plan for ${condition}. Return JSON...` }];
   try {
-      const jsonString = await callOpenRouter(messages);
+      const jsonString = await callOpenRouter(messages, "google/gemini-2.0-flash-exp:free");
       const clean = jsonString.replace(/```json|```/g, '').trim();
       return JSON.parse(clean);
   } catch (e) {
