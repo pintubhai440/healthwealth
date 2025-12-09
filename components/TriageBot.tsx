@@ -1,316 +1,238 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { runTriageTurn, transcribeUserAudio, generateTTS } from '../services/gemini';
-import { MessageSquare, Send, MapPin, User, Stethoscope, Mic, MicOff, Volume2, StopCircle, Loader2, RefreshCcw } from 'lucide-react';
-import { ChatMessage, TriageState } from '../types';
+import { GoogleGenAI, Modality } from "@google/genai";
 
-// Audio Helpers
-function decode(base64: string) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+// ==========================================
+// CLIENT SETUP
+// ==========================================
+
+// Client 1: First Key
+const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
+const ai = new GoogleGenAI({ apiKey: apiKey1 });
+
+// Client 2: Use Second Key (Fallback to First if missing)
+const apiKey2 = process.env.API_KEY_2 || apiKey1;
+const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
+
+// Helper to clean JSON
+const cleanJSON = (text: string) => {
+  if (!text) return {};
+  try {
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error("JSON Parse Error:", e);
+    return { error: "AI response format error." };
   }
-  return bytes;
-}
-
-async function decodeAudioData(
-  data: Uint8Array,
-  ctx: AudioContext,
-  sampleRate: number,
-  numChannels: number,
-): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-    }
-  }
-  return buffer;
-}
-
-export const TriageBot: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: '0', role: 'model', text: "Namaste! I am your AI Doctor Assistant. Tell me, what health problem are you facing today? (e.g., Stomach pain, Fever)" }
-  ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [step, setStep] = useState(0);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | undefined>();
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => console.log("Location denied", err)
-    );
-  }, []);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, loading]);
-
-  // Audio Playback Logic
-  const playResponseAudio = async (base64Audio: string) => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      const ctx = audioContextRef.current;
-      
-      const audioBuffer = await decodeAudioData(
-        decode(base64Audio),
-        ctx,
-        24000,
-        1
-      );
-
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      source.onended = () => setIsSpeaking(false);
-      
-      setIsSpeaking(true);
-      source.start();
-    } catch (e) {
-      console.error("Audio Playback Error", e);
-      setIsSpeaking(false);
-    }
-  };
-
-  const handleMicClick = async () => {
-    if (isRecording) {
-      // Stop Recording
-      mediaRecorderRef.current?.stop();
-    } else {
-      // Start Recording
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        audioChunksRef.current = [];
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) audioChunksRef.current.push(event.data);
-        };
-
-        mediaRecorder.onstop = async () => {
-          setIsRecording(false);
-          setLoading(true); // Indicate processing audio
-          
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const reader = new FileReader();
-          reader.readAsDataURL(audioBlob);
-          reader.onloadend = async () => {
-            const base64String = (reader.result as string).split(',')[1];
-            try {
-               const text = await transcribeUserAudio(base64String, 'audio/webm');
-               setInput(text);
-            } catch (e) {
-               console.error(e);
-               alert("Failed to transcribe audio.");
-            } finally {
-               setLoading(false);
-            }
-          };
-          
-          stream.getTracks().forEach(track => track.stop());
-        };
-
-        mediaRecorder.start();
-        setIsRecording(true);
-      } catch (err) {
-        console.error("Mic Error", err);
-        alert("Microphone access denied or error.");
-      }
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      // Filter out system messages for history passed to API in the service
-      const history = messages.map(m => ({ role: m.role, text: m.text }));
-      const result = await runTriageTurn(history, userMsg.text, step, location);
-
-      const botMsg: ChatMessage = { 
-        id: (Date.now() + 1).toString(), 
-        role: 'model', 
-        text: result.text 
-      };
-
-      setMessages(prev => [...prev, botMsg]);
-      
-      // If result has grounding maps (Doctors), append a special system message
-      if (result.groundingUrls && result.groundingUrls.length > 0) {
-         const linksMsg: ChatMessage = {
-             id: (Date.now() + 2).toString(),
-             role: 'system',
-             text: JSON.stringify(result.groundingUrls)
-         };
-         setMessages(prev => [...prev, linksMsg]);
-      }
-
-      setStep(prev => prev + 1);
-
-      // Trigger TTS
-      // Don't await TTS to block UI, just play when ready
-      generateTTS(result.text).then(audioData => {
-         if (audioData) playResponseAudio(audioData);
-      });
-
-    } catch (e) {
-      console.error(e);
-      setMessages(prev => [...prev, { id: 'err-' + Date.now(), role: 'system', text: 'Error connecting to AI Doctor. Please try again.' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-[600px] bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200 relative">
-      <div className="bg-teal-600 p-4 text-white flex items-center justify-between">
-        <div className="flex items-center gap-2">
-            <Stethoscope className="w-6 h-6" />
-            <h2 className="font-bold text-lg">Smart Triage</h2>
-        </div>
-        <div className="flex items-center gap-3">
-             {isSpeaking && (
-                 <div className="flex items-center gap-1 bg-teal-700 px-2 py-1 rounded-full text-xs animate-pulse">
-                    <Volume2 className="w-3 h-3" /> Speaking...
-                 </div>
-             )}
-            <div className="text-xs bg-teal-700 px-2 py-1 rounded">
-                Step {Math.min(step, 3)}/3
-            </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-        {messages.map((m) => {
-            if (m.role === 'system') {
-                // Try to parse as links
-                let links = null;
-                try {
-                    const parsed = JSON.parse(m.text);
-                    if (Array.isArray(parsed)) links = parsed;
-                } catch {}
-
-                if (links) {
-                    return (
-                        <div key={m.id} className="flex flex-col gap-2 p-3 bg-blue-50 rounded-lg text-sm border border-blue-100">
-                            <span className="font-semibold text-blue-700 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" /> Recommended Doctors Nearby:
-                            </span>
-                            {links.map((link: any, idx: number) => (
-                                <a key={idx} href={link.uri} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate block">
-                                    {link.title}
-                                </a>
-                            ))}
-                        </div>
-                    );
-                } else {
-                    // Fallback for error messages
-                    return (
-                        <div key={m.id} className="flex justify-center my-2 animate-in fade-in">
-                             <div className="bg-amber-100 text-amber-800 text-xs px-3 py-1 rounded-full border border-amber-200 shadow-sm">
-                                {m.text}
-                             </div>
-                        </div>
-                    );
-                }
-            }
-
-            return (
-                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                    <div className={`max-w-[80%] rounded-2xl p-3 px-4 shadow-sm ${
-                        m.role === 'user' 
-                        ? 'bg-teal-600 text-white rounded-br-none' 
-                        : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
-                    }`}>
-                        <div className="text-sm md:text-base whitespace-pre-wrap">{m.text}</div>
-                    </div>
-                </div>
-            );
-        })}
-        {loading && (
-            <div className="flex justify-start">
-                <div className="bg-white border border-slate-200 rounded-2xl p-3 rounded-bl-none flex items-center gap-2 shadow-sm">
-                    {isRecording ? (
-                        <span className="text-xs text-red-500 font-bold flex items-center gap-1 animate-pulse">
-                           <Mic className="w-3 h-3" /> Listening...
-                        </span>
-                    ) : (
-                        <>
-                           <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce"></div>
-                           <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce delay-75"></div>
-                           <div className="w-2 h-2 bg-teal-500 rounded-full animate-bounce delay-150"></div>
-                        </>
-                    )}
-                </div>
-            </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div className="p-4 bg-white border-t border-slate-100">
-        <div className="flex gap-2 items-center">
-            {/* Mic Button */}
-            {step < 3 && (
-                <button 
-                  onClick={handleMicClick}
-                  disabled={loading}
-                  className={`p-3 rounded-full transition-all ${isRecording ? 'bg-red-100 text-red-600 animate-pulse ring-2 ring-red-400' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  {isRecording ? <StopCircle className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                </button>
-            )}
-
-            <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder={isRecording ? "Listening..." : (step >= 3 ? "Triage Complete." : "Type or speak your answer...")}
-                disabled={step >= 3 || isRecording || loading}
-                className="flex-1 px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-slate-50 disabled:bg-slate-100 disabled:text-slate-500"
-            />
-            
-            {step >= 3 ? (
-                 <button onClick={() => window.location.reload()} className="bg-slate-700 text-white p-3 rounded-xl hover:bg-slate-800 transition-colors flex items-center gap-2">
-                    <RefreshCcw className="w-5 h-5" />
-                 </button>
-            ) : (
-                <button 
-                    onClick={handleSend}
-                    disabled={loading || !input.trim() || isRecording}
-                    className="bg-teal-600 text-white p-3 rounded-xl hover:bg-teal-700 disabled:opacity-50 transition-colors shadow-lg shadow-teal-200"
-                >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                </button>
-            )}
-        </div>
-      </div>
-    </div>
-  );
 };
+
+// 👇 CRITICAL FIX: Using 'gemini-2.0-flash' 
+// (Alive per your screenshot & distinct quota from 2.5)
+const MODEL_NAME = 'gemini-2.0-flash'; 
+
+// ==========================================
+// 1. TRIAGE CHAT
+// ==========================================
+
+export const runTriageTurn = async (
+  history: { role: string; text: string }[],
+  currentInput: string,
+  step: number,
+  userLocation?: { lat: number; lng: number }
+) => {
+  const model = MODEL_NAME;
+  
+  let systemInstruction = `You are a Smart Triage Doctor (AI). 
+  Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
+  Current Step: ${step} (0-indexed).
+  Protocol:
+  1. Analyze the user's complaint.
+  2. If Step < 2: Ask ONE concise question.
+  3. If Step == 2: Provide a FINAL VERDICT.`;
+
+  if (step >= 2) {
+    systemInstruction += " You have access to Google Maps to find a relevant doctor nearby if location is provided.";
+  }
+
+  const tools: any[] = [];
+  const toolConfig: any = {};
+
+  if (step >= 2 && userLocation) {
+    tools.push({ googleMaps: {} });
+    toolConfig.retrievalConfig = {
+      latLng: { latitude: userLocation.lat, longitude: userLocation.lng }
+    };
+  }
+
+  const cleanHistory = history
+    .filter(h => h.role === 'user' || h.role === 'model')
+    .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [
+        ...cleanHistory,
+        { role: 'user', parts: [{ text: currentInput }] }
+      ],
+      config: {
+        systemInstruction,
+        tools: tools.length > 0 ? tools : undefined,
+        toolConfig: tools.length > 0 ? toolConfig : undefined,
+      }
+    });
+    
+    const text = response.text || "I couldn't generate a response.";
+    
+    // Maps handling
+    const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const groundingUrls = mapChunks
+      .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
+      .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }))
+      .concat(mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri })));
+
+    return { text, groundingUrls };
+
+  } catch (error) {
+    console.error("Triage Error:", error);
+    throw error;
+  }
+};
+
+// ==========================================
+// 2. AUDIO TRANSCRIPTION
+// ==========================================
+
+export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Transcribe this audio. Return only the transcription text." }
+        ]
+      }
+    });
+    return response.text?.trim() || "";
+  } catch (e) {
+    console.error("Transcription failed", e);
+    return "";
+  }
+};
+
+// ==========================================
+// 3. TEXT TO SPEECH
+// ==========================================
+
+export const generateTTS = async (text: string) => {
+  try {
+    // 2.0 Flash Exp for TTS is consistent with 2.0 Flash usage
+    const model = 'gemini-2.0-flash-exp'; 
+    const response = await ai.models.generateContent({
+      model,
+      contents: { parts: [{ text }] },
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+      }
+    });
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (e) {
+    console.error("TTS failed", e);
+    return null;
+  }
+};
+
+// ==========================================
+// 4. IMAGE ANALYSIS (MediScanner)
+// ==========================================
+
+export const analyzeImage = async (
+  base64Data: string, 
+  mimeType: string, 
+  type: 'MEDICINE' | 'DERM'
+) => {
+  // Using 2.0 Flash (Supports Images) and Key 2
+  const model = MODEL_NAME; 
+  
+  let prompt = "";
+  if (type === 'MEDICINE') {
+    prompt = "Identify this medicine. Return a JSON object (no markdown) with fields: name, purpose, and dosage_warning (string).";
+  } else {
+    prompt = `Analyze this skin condition. Warning: Educational purpose only. 
+    Return a JSON object (no markdown) with: 
+    - condition_name (string)
+    - verdict (enum: 'Good', 'Bad', 'Very Bad')
+    - explanation (string)
+    - recommended_action (string)`;
+  }
+
+  try {
+    const response = await aiScanner.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    return cleanJSON(response.text || "{}");
+  } catch (error: any) {
+    console.error("MediScanner Error:", error);
+    return { error: `AI Error: Please try again. (${error.message || 'Unknown'})` };
+  }
+};
+
+// ==========================================
+// 5. VIDEO ANALYSIS
+// ==========================================
+
+export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
+  const prompt = `Analyze this video for the Guardian Alert System.
+  Task: Verify if the person actually puts a pill in their mouth and swallows it.
+  Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
+
+  try {
+    const response = await aiScanner.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: { responseMimeType: "application/json" }
+    });
+
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    console.error("Video Analysis Error:", error);
+    return { error: "Failed to analyze video." };
+  }
+};
+
+// ==========================================
+// 6. DIET PLAN
+// ==========================================
+
+export const generateDietPlan = async (condition: string) => {
+  const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    return { error: "Could not generate diet plan." };
+  }
+};
+
+export { ai };
