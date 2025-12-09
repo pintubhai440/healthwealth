@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// 1. KEY ROTATION LOGIC (THE HACK) 🛠️
+// 1. KEY ROTATION LOGIC (THE HACK 🛠️)
 // ==========================================
 
 // Get the pool of keys from vite.config.ts
@@ -14,6 +14,7 @@ if (keysPool.length === 0) {
 }
 
 // Helper: Pick a random key and return a FRESH client
+// Isse har request alag key se jayegi -> No Rate Limit Error!
 const getGenAIClient = () => {
   const randomKey = keysPool[Math.floor(Math.random() * keysPool.length)];
   return new GoogleGenAI({ apiKey: randomKey });
@@ -55,10 +56,16 @@ export const runTriageTurn = async (
   Protocol:
   1. Analyze the user's complaint.
   2. If Step < 2: Ask ONE concise question.
-  3. If Step == 2: Provide a FINAL VERDICT.`;
+  3. If Step == 2: Provide a FINAL VERDICT.
+  
+  IMPORTANT FOR STEP 2:
+  - You MUST recommend a specific type of doctor (e.g., Dermatologist, General Physician).
+  - You MUST use the 'googleMaps' tool to find real clinics near the user's location.
+  - Do NOT just say "consult a doctor". Show me WHERE the doctor is.
+  `;
 
   if (step >= 2) {
-    systemInstruction += " You have access to Google Maps to find a relevant doctor nearby if location is provided.";
+    systemInstruction += " You have access to Google Maps. USE IT to find a relevant doctor nearby.";
   }
 
   const tools: any[] = [];
@@ -91,21 +98,32 @@ export const runTriageTurn = async (
     
     const text = response.text || "I couldn't generate a response.";
     
-    // Improved Grounding Extraction
+    // Improved Grounding Extraction (Maps Link nikalne ke liye)
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     
     const groundingUrls = mapChunks
       .map((c: any) => {
+        // Priority 1: Direct Map URI
         if (c.maps?.uri) {
-           return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
+           return { 
+             title: c.maps.title || "Medical Center", 
+             uri: c.maps.uri,
+             source: "Google Maps" 
+           };
         }
+        // Priority 2: Web URI that looks like a map
         if (c.web?.uri && c.web.uri.includes('google.com/maps')) {
-           return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
+           return { 
+             title: c.web.title || "Doctor Location", 
+             uri: c.web.uri, 
+             source: "Google Maps" 
+           };
         }
         return null;
       })
       .filter(item => item !== null);
 
+    // Fallback logic
     if (groundingUrls.length === 0) {
         const snippets = mapChunks
             .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
@@ -127,7 +145,7 @@ export const runTriageTurn = async (
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
-    const client = getGenAIClient();
+    const client = getGenAIClient(); // Random Key
     const response = await client.models.generateContent({
       model: MODEL_NAME,
       contents: {
@@ -150,7 +168,7 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 
 export const generateTTS = async (text: string) => {
   try {
-    const client = getGenAIClient();
+    const client = getGenAIClient(); // Random Key
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-tts', 
       contents: { parts: [{ text }] },
@@ -176,7 +194,7 @@ export const analyzeImage = async (
   type: 'MEDICINE' | 'DERM'
 ) => {
   const model = MODEL_NAME; 
-  const client = getGenAIClient();
+  const client = getGenAIClient(); // Random Key
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -216,7 +234,7 @@ export const analyzeImage = async (
 // ==========================================
 
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-  const client = getGenAIClient();
+  const client = getGenAIClient(); // Random Key
   const prompt = `Analyze this video for the Guardian Alert System.
   Task: Verify if the person actually puts a pill in their mouth and swallows it.
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
@@ -245,7 +263,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 // ==========================================
 
 export const generateDietPlan = async (condition: string) => {
-  const client = getGenAIClient();
+  const client = getGenAIClient(); // Random Key
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
@@ -260,5 +278,5 @@ export const generateDietPlan = async (condition: string) => {
   }
 };
 
-// Export one instance just for types/legacy if needed, but prefer internal usage
+// Default export for legacy compatibility, though internal functions use getGenAIClient()
 export const ai = getGenAIClient();
