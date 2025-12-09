@@ -1,155 +1,238 @@
-// services/gemini.ts - FIXED FOR OPENROUTER
+import { GoogleGenAI, Modality } from "@google/genai";
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const SITE_URL = "https://healthwealth.vercel.app"; 
-const SITE_NAME = "MediGuard AI";
+// ==========================================
+// CLIENT SETUP
+// ==========================================
 
-// Helper for OpenRouter API Calls
-const callOpenRouter = async (messages: any[], model: string) => {
+// Client 1: First Key
+const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
+const ai = new GoogleGenAI({ apiKey: apiKey1 });
+
+// Client 2: Second Key (Try to use this primarily for Lite model)
+const apiKey2 = process.env.API_KEY_2 || apiKey1;
+const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
+
+// Helper to clean JSON
+const cleanJSON = (text: string) => {
+  if (!text) return {};
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": SITE_URL,
-        "X-Title": SITE_NAME,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        "model": model,
-        "messages": messages,
-        "temperature": 0.7
-      })
-    });
-
-    if (!response.ok) {
-        const err = await response.text();
-        console.error("OpenRouter Response Error:", err);
-        throw new Error(`OpenRouter Error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0]?.message?.content || "";
-  } catch (error) {
-    console.error("AI Call Failed:", error);
-    throw error;
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error("JSON Parse Error:", e);
+    return { error: "AI response format error." };
   }
 };
 
-/**
- * Triage Chat Logic (OpenRouter)
- */
+// 👇 SOLUTION: Using 'Lite' model. 
+// Ye model stable hai aur iska quota main models se alag hota hai.
+const MODEL_NAME = 'gemini-2.5-flash-lite'; 
+
+// ==========================================
+// 1. TRIAGE CHAT
+// ==========================================
+
 export const runTriageTurn = async (
   history: { role: string; text: string }[],
   currentInput: string,
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  const messages = [
-    {
-      role: "system",
-      content: `You are a Smart Triage Doctor (AI). 
-      Goal: Diagnose quickly in 3 steps.
-      Current Step: ${step}.
-      Protocol:
-      1. Analyze complaint.
-      2. If Step < 2: Ask ONE concise question.
-      3. If Step == 2: Provide VERDICT (Risk Level, Doctor Specialist, Home Remedy).`
-    },
-    ...history.map(msg => ({
-      role: msg.role === 'model' ? 'assistant' : 'user',
-      content: msg.text
-    })),
-    { role: "user", content: currentInput }
-  ];
-
-  // 👇 FIX: Using a reliable FREE model on OpenRouter
-  const text = await callOpenRouter(messages, "google/gemini-2.0-flash-exp:free");
+  const model = MODEL_NAME;
   
-  let groundingUrls: any[] = [];
-  if (step >= 2 && userLocation) {
-      groundingUrls.push({
-          title: "Find Doctors Nearby",
-          uri: `https://www.google.com/maps/search/doctors/@${userLocation.lat},${userLocation.lng},14z`
-      });
+  let systemInstruction = `You are a Smart Triage Doctor (AI). 
+  Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
+  Current Step: ${step} (0-indexed).
+  Protocol:
+  1. Analyze the user's complaint.
+  2. If Step < 2: Ask ONE concise question.
+  3. If Step == 2: Provide a FINAL VERDICT.`;
+
+  if (step >= 2) {
+    systemInstruction += " You have access to Google Maps to find a relevant doctor nearby if location is provided.";
   }
 
-  return { text, groundingUrls };
+  const tools: any[] = [];
+  const toolConfig: any = {};
+
+  if (step >= 2 && userLocation) {
+    tools.push({ googleMaps: {} });
+    toolConfig.retrievalConfig = {
+      latLng: { latitude: userLocation.lat, longitude: userLocation.lng }
+    };
+  }
+
+  const cleanHistory = history
+    .filter(h => h.role === 'user' || h.role === 'model')
+    .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
+
+  try {
+    // Uses Scanner Client (Key 2) for better luck with quota
+    const response = await aiScanner.models.generateContent({
+      model,
+      contents: [
+        ...cleanHistory,
+        { role: 'user', parts: [{ text: currentInput }] }
+      ],
+      config: {
+        systemInstruction,
+        tools: tools.length > 0 ? tools : undefined,
+        toolConfig: tools.length > 0 ? toolConfig : undefined,
+      }
+    });
+    
+    const text = response.text || "I couldn't generate a response.";
+    
+    const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const groundingUrls = mapChunks
+      .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
+      .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }))
+      .concat(mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri })));
+
+    return { text, groundingUrls };
+
+  } catch (error) {
+    console.error("Triage Error:", error);
+    throw error;
+  }
 };
 
-/**
- * Audio Transcription
- */
+// ==========================================
+// 2. AUDIO TRANSCRIPTION
+// ==========================================
+
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
-    return "Audio transcription is limited on OpenRouter free tier. Please type your symptoms.";
+  try {
+    const response = await aiScanner.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Transcribe this audio. Return only the transcription text." }
+        ]
+      }
+    });
+    return response.text?.trim() || "";
+  } catch (e) {
+    console.error("Transcription failed", e);
+    return "";
+  }
 };
 
-/**
- * Text to Speech
- */
+// ==========================================
+// 3. TEXT TO SPEECH
+// ==========================================
+
 export const generateTTS = async (text: string) => {
-    return null; // TTS not supported via simple OpenRouter chat
+  try {
+    // Lite models generally don't support TTS directly, trying Flash TTS
+    // Using apiKey1 (older key) for this specific task
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-tts', // As seen in your screenshot
+      contents: { parts: [{ text }] },
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+      }
+    });
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (e) {
+    console.error("TTS failed", e);
+    return null;
+  }
 };
 
-/**
- * Image Analysis (MediScanner)
- */
+// ==========================================
+// 4. IMAGE ANALYSIS (MediScanner)
+// ==========================================
+
 export const analyzeImage = async (
   base64Data: string, 
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  let prompt = type === 'MEDICINE' 
-    ? "Identify this medicine. Return ONLY valid JSON: { \"name\": \"...\", \"purpose\": \"...\", \"dosage_warning\": \"...\" }"
-    : "Analyze skin. Return ONLY valid JSON: { \"condition_name\": \"...\", \"verdict\": \"Good/Bad\", \"explanation\": \"...\", \"recommended_action\": \"...\" }";
-
-  const messages = [
-    {
-      role: "user",
-      content: [
-        { type: "text", text: prompt },
-        { 
-          type: "image_url", 
-          image_url: { 
-            url: `data:${mimeType};base64,${base64Data}` 
-          } 
-        }
-      ]
-    }
-  ];
+  // Using Flash-Lite for images
+  const model = MODEL_NAME; 
+  
+  let prompt = "";
+  if (type === 'MEDICINE') {
+    prompt = "Identify this medicine. Return a JSON object (no markdown) with fields: name, purpose, and dosage_warning (string).";
+  } else {
+    prompt = `Analyze this skin condition. Warning: Educational purpose only. 
+    Return a JSON object (no markdown) with: 
+    - condition_name (string)
+    - verdict (enum: 'Good', 'Bad', 'Very Bad')
+    - explanation (string)
+    - recommended_action (string)`;
+  }
 
   try {
-      // 👇 FIX: Using Pro Experimental Free (Best for vision)
-      const jsonString = await callOpenRouter(messages, "google/gemini-2.0-pro-exp-02-05:free");
-      
-      const clean = jsonString.replace(/```json|```/g, '').trim();
-      return JSON.parse(clean);
-  } catch (e) {
-      console.error(e);
-      return { error: "Failed to analyze image via OpenRouter." };
+    const response = await aiScanner.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    return cleanJSON(response.text || "{}");
+  } catch (error: any) {
+    console.error("MediScanner Error:", error);
+    return { error: `AI Error: Please try again. (${error.message || 'Quota Exceeded'})` };
   }
 };
 
-/**
- * Video Analysis
- */
+// ==========================================
+// 5. VIDEO ANALYSIS
+// ==========================================
+
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-    return { error: "Video analysis not supported on OpenRouter connection yet." };
-};
+  const prompt = `Analyze this video for the Guardian Alert System.
+  Task: Verify if the person actually puts a pill in their mouth and swallows it.
+  Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
-/**
- * Diet Plan
- */
-export const generateDietPlan = async (condition: string) => {
-  const messages = [{ role: "user", content: `Create diet plan for ${condition}. Return JSON...` }];
   try {
-      const jsonString = await callOpenRouter(messages, "google/gemini-2.0-flash-exp:free");
-      const clean = jsonString.replace(/```json|```/g, '').trim();
-      return JSON.parse(clean);
-  } catch (e) {
-      return { error: "Failed to generate plan." };
+    const response = await aiScanner.models.generateContent({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: { responseMimeType: "application/json" }
+    });
+
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    console.error("Video Analysis Error:", error);
+    return { error: "Failed to analyze video." };
   }
 };
 
-// Export dummy object to satisfy imports
-export const ai = { models: { generateContent: () => {} } };
+// ==========================================
+// 6. DIET PLAN
+// ==========================================
+
+export const generateDietPlan = async (condition: string) => {
+  const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
+  
+  try {
+    const response = await aiScanner.models.generateContent({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    return { error: "Could not generate diet plan." };
+  }
+};
+
+export { ai };
