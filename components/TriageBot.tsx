@@ -213,28 +213,37 @@ export const TriageBot: React.FC = () => {
                 if (links) {
                     return (
                         <div key={m.id} className="flex flex-col gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                            <span className="font-bold text-blue-800 flex items-center gap-2">
-                                <MapPin className="w-5 h-5 text-red-500" /> Recommended Nearby:
+                            <span className="font-bold text-blue-800 flex items-center gap-2 text-sm uppercase tracking-wide">
+                                <MapPin className="w-5 h-5 text-red-500" /> Recommended Nearby Doctors
                             </span>
-                            <div className="grid gap-2">
+                            <div className="grid gap-3">
                                 {links.map((link: any, idx: number) => (
-                                    <a 
+                                    <div 
                                       key={idx} 
-                                      href={link.uri} 
-                                      target="_blank" 
-                                      rel="noreferrer" 
-                                      className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-md transition-all group"
+                                      className="flex flex-col bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
                                     >
-                                        <div className="flex flex-col">
-                                            <span className="font-semibold text-slate-700 group-hover:text-blue-600">
-                                                {link.title}
-                                            </span>
-                                            <span className="text-xs text-slate-400">Tap to Navigate</span>
+                                        <div className="p-3 flex items-start justify-between gap-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="bg-red-50 p-2 rounded-lg text-red-500">
+                                                    <MapPin className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-slate-800 text-sm">{link.title}</h4>
+                                                    <p className="text-xs text-slate-500 mt-1">Medical Professional • Nearby</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="bg-blue-100 p-2 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                        
+                                        <a 
+                                           href={link.uri} 
+                                           target="_blank" 
+                                           rel="noreferrer"
+                                           className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            <span>Get Directions</span>
                                             <Navigation className="w-4 h-4" />
-                                        </div>
-                                    </a>
+                                        </a>
+                                    </div>
                                 ))}
                             </div>
                         </div>
