@@ -228,21 +228,33 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (NEW 🔥)
+// 7. YOUTUBE VIDEO FINDER (UPDATED FOR LIST 🔥)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  const prompt = `Find a popular, embeddable YouTube video ID for: "${query}". 
-  Return ONLY the 11-character Video ID string (e.g., dQw4w9WgXcQ). 
-  Do NOT return a URL. Do NOT return Markdown. Just the ID.`;
+  const prompt = `You are a helpful assistant. Find 4 to 6 popular, relevant YouTube videos for: "${query}".
+  Return ONLY a pure JSON array (no markdown, no backticks) with this exact structure:
+  [
+    { "title": "Concise Video Title", "videoId": "11_char_ID" },
+    { "title": "Another Title", "videoId": "another_ID" }
+  ]
+  Ensure videoIds are valid 11-character YouTube IDs.`;
 
   try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
-    const text = response.text?.trim() || "";
-    // Clean up if AI adds extra text
-    const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
-    return videoId;
+    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    
+    const text = response.text || "[]";
+    const data = cleanJSON(text);
+    
+    // Ensure it's an array
+    if (Array.isArray(data)) return data;
+    return [];
+
   } catch (error) {
-    return null;
+    console.error("Video search error:", error);
+    return [];
   }
 };
 
