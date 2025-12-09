@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { runTriageTurn, transcribeUserAudio, generateTTS } from '../services/gemini';
-import { MessageSquare, Send, MapPin, User, Stethoscope, Mic, MicOff, Volume2, StopCircle, Loader2, RefreshCcw } from 'lucide-react';
+import { MessageSquare, Send, MapPin, User, Stethoscope, Mic, MicOff, Volume2, StopCircle, Loader2, RefreshCcw, Navigation } from 'lucide-react';
 import { ChatMessage, TriageState } from '../types';
 
 // Audio Helpers
@@ -94,10 +94,8 @@ export const TriageBot: React.FC = () => {
 
   const handleMicClick = async () => {
     if (isRecording) {
-      // Stop Recording
       mediaRecorderRef.current?.stop();
     } else {
-      // Start Recording
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mediaRecorder = new MediaRecorder(stream);
@@ -110,7 +108,7 @@ export const TriageBot: React.FC = () => {
 
         mediaRecorder.onstop = async () => {
           setIsRecording(false);
-          setLoading(true); // Indicate processing audio
+          setLoading(true);
           
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const reader = new FileReader();
@@ -127,7 +125,6 @@ export const TriageBot: React.FC = () => {
                setLoading(false);
             }
           };
-          
           stream.getTracks().forEach(track => track.stop());
         };
 
@@ -149,7 +146,6 @@ export const TriageBot: React.FC = () => {
     setLoading(true);
 
     try {
-      // Filter out system messages for history passed to API in the service
       const history = messages.map(m => ({ role: m.role, text: m.text }));
       const result = await runTriageTurn(history, userMsg.text, step, location);
 
@@ -173,8 +169,6 @@ export const TriageBot: React.FC = () => {
 
       setStep(prev => prev + 1);
 
-      // Trigger TTS
-      // Don't await TTS to block UI, just play when ready
       generateTTS(result.text).then(audioData => {
          if (audioData) playResponseAudio(audioData);
       });
@@ -218,19 +212,34 @@ export const TriageBot: React.FC = () => {
 
                 if (links) {
                     return (
-                        <div key={m.id} className="flex flex-col gap-2 p-3 bg-blue-50 rounded-lg text-sm border border-blue-100">
-                            <span className="font-semibold text-blue-700 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" /> Recommended Doctors Nearby:
+                        <div key={m.id} className="flex flex-col gap-3 p-4 bg-blue-50 rounded-xl border border-blue-100 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                            <span className="font-bold text-blue-800 flex items-center gap-2">
+                                <MapPin className="w-5 h-5 text-red-500" /> Recommended Nearby:
                             </span>
-                            {links.map((link: any, idx: number) => (
-                                <a key={idx} href={link.uri} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline truncate block">
-                                    {link.title}
-                                </a>
-                            ))}
+                            <div className="grid gap-2">
+                                {links.map((link: any, idx: number) => (
+                                    <a 
+                                      key={idx} 
+                                      href={link.uri} 
+                                      target="_blank" 
+                                      rel="noreferrer" 
+                                      className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-md transition-all group"
+                                    >
+                                        <div className="flex flex-col">
+                                            <span className="font-semibold text-slate-700 group-hover:text-blue-600">
+                                                {link.title}
+                                            </span>
+                                            <span className="text-xs text-slate-400">Tap to Navigate</span>
+                                        </div>
+                                        <div className="bg-blue-100 p-2 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                            <Navigation className="w-4 h-4" />
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
                         </div>
                     );
                 } else {
-                    // Fallback for error messages
                     return (
                         <div key={m.id} className="flex justify-center my-2 animate-in fade-in">
                              <div className="bg-amber-100 text-amber-800 text-xs px-3 py-1 rounded-full border border-amber-200 shadow-sm">
@@ -275,7 +284,6 @@ export const TriageBot: React.FC = () => {
 
       <div className="p-4 bg-white border-t border-slate-100">
         <div className="flex gap-2 items-center">
-            {/* Mic Button */}
             {step < 3 && (
                 <button 
                   onClick={handleMicClick}
