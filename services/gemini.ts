@@ -7,7 +7,7 @@ import { GoogleGenAI, Modality } from "@google/genai";
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
 if (keysPool.length === 0) {
-  console.warn("⚠️ Warning: No API Keys found in Pool. Using fallback.");
+  console.warn("⚠️ Warning: No API Keys found. Using fallback.");
 } else {
   console.log(`✅ Loaded ${keysPool.length} API Keys for rotation.`);
 }
@@ -17,7 +17,7 @@ const getRandomKey = () => {
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
-// Helper: Sleep function (Wait for X milliseconds)
+// Helper: Sleep function
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const generateContentWithRetry = async (modelName: string, params: any, retries = 3) => {
@@ -30,9 +30,8 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
       return response; 
     } catch (error: any) {
       lastError = error;
-      // If error is 429 (Quota), wait 2 seconds then retry with new key
+      // 429 Quota Error Handling
       if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
-         console.warn(`Attempt ${i + 1} failed (Quota). Retrying in 2s...`);
          await sleep(2000); 
          continue; 
       }
@@ -225,22 +224,19 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (NEW FIX 🛠️)
+// 7. YOUTUBE VIDEO FINDER (FIXED)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  // We ask AI to give us the best ID directly. No API Key needed.
-  const prompt = `Find the most popular, valid, and embeddable YouTube video ID for: "${query}". 
+  const prompt = `Find the most popular, valid YouTube video ID for: "${query}". 
   Example: if query is 'Surya Namaskar', return '7c2gpGMj3TE'.
   Return ONLY the 11-character Video ID string. Do not write anything else.`;
 
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
     const text = response.text?.trim() || "";
-    // Clean up if AI adds extra text
     const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
     return videoId;
   } catch (error) {
-    console.error("Video Finder Error:", error);
     return null;
   }
 };
