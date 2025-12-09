@@ -4,18 +4,25 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // 1. KEY ROTATION LOGIC (THE HACK 🛠️)
 // ==========================================
 
+// Get the pool of keys from vite.config.ts
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
+// Debugging: Check if keys are actually loaded
 if (keysPool.length === 0) {
-  console.error("No API Keys found! Please check Vercel Env Variables.");
+  console.warn("⚠️ Warning: No API Keys found in Pool. Using fallback/single key if available.");
 } else {
-  console.log(`Loaded ${keysPool.length} API Keys for rotation.`);
+  console.log(`✅ Loaded ${keysPool.length} API Keys for rotation.`);
 }
 
 const getGenAIClient = () => {
-  // Agar pool khali hai toh crash mat hone do
-  if (keysPool.length === 0) return new GoogleGenAI({ apiKey: "MISSING_KEY" });
+  // Fallback: Agar Vercel se pool nahi aaya, toh standard env var try karo
+  if (keysPool.length === 0) {
+     const fallbackKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+     if (!fallbackKey) console.error("❌ CRITICAL: No API Key found anywhere!");
+     return new GoogleGenAI({ apiKey: fallbackKey || "MISSING_KEY" });
+  }
   
+  // Rotation: Randomly pick one key
   const randomKey = keysPool[Math.floor(Math.random() * keysPool.length)];
   return new GoogleGenAI({ apiKey: randomKey });
 };
@@ -31,10 +38,11 @@ const cleanJSON = (text: string) => {
   }
 };
 
+// 🛑 DO NOT CHANGE THIS MODEL NAME
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (AGGRESSIVE CLEANER ADDED 🧹)
+// 2. TRIAGE CHAT (UPDATED FOR 3 DOCTORS 🏥🏥🏥)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -54,14 +62,16 @@ export const runTriageTurn = async (
   3. If Step == 2: Provide a FINAL VERDICT.
   
   IMPORTANT FOR STEP 2 (VERDICT):
-  - You MUST recommend a specific doctor type.
-  - You MUST use the 'googleMaps' tool to find real clinics.
-  - **DO NOT** output the doctor list in Markdown. 
-  - Just say "I recommend seeing a [Doctor Type]. Here are some nearby options:" and STOP. Let the system handle the display.
+  - You MUST recommend a specific doctor type (e.g., Neurologist, ENT).
+  - **MANDATORY:** You MUST find **EXACTLY 3 DISTINCT** nearby clinics/doctors using Google Maps.
+  - Do NOT provide just one link. Provide 3 different options.
+  - **DO NOT** output the doctor list in Markdown text. 
+  - Just say: "I recommend seeing a [Doctor Type]. Here are 3 nearby options:" and STOP. 
+  - The system will extract the map links automatically.
   `;
 
   if (step >= 2) {
-    systemInstruction += " You have access to Google Maps. USE IT.";
+    systemInstruction += " You have access to Google Maps. USE IT to find 3 specific locations.";
   }
 
   const tools: any[] = [];
@@ -105,7 +115,6 @@ export const runTriageTurn = async (
       .filter(item => item !== null);
 
     // 2. AGGRESSIVE CLEANER: Convert Markdown Links to Cards 🃏
-    // Ye logic poori line ko scan karega. Agar usme map link mila, toh usse 'Card' banayega aur text se hata dega.
     const lines = text.split('\n');
     const cleanLines: string[] = [];
     
@@ -117,40 +126,33 @@ export const runTriageTurn = async (
         const bareMatch = line.match(bareLinkRegex);
 
         if (markdownMatch) {
-            // Case 1: [Title](Link) format
             groundingUrls.push({
-                title: markdownMatch[1].replace(/^\*\*|\*\*$/g, '').trim(), // Remove bold stars
+                title: markdownMatch[1].replace(/^\*\*|\*\*$/g, '').trim(),
                 uri: markdownMatch[2],
                 source: "Google Maps"
             });
-            // Don't add this line to text (hide it)
         } else if (bareMatch) {
-            // Case 2: Just a raw link
-            // Try to extract a name from the line, e.g., "**Dr. Smith** - https://..."
             const nameMatch = line.match(/\*\*([^*]+)\*\*/); 
             const title = nameMatch ? nameMatch[1] : "View Location";
-            
             groundingUrls.push({
                 title: title,
                 uri: bareMatch[1],
                 source: "Google Maps"
             });
-             // Don't add this line to text
         } else {
-            // No link, keep the line
             cleanLines.push(line);
         }
     });
 
     text = cleanLines.join('\n').trim();
 
-    // 3. Final Fallback if empty
+    // 3. Force 3 Generic Cards if AI fails to find specific ones (Safety Net)
     if (groundingUrls.length === 0 && step === 2) {
-       groundingUrls.push({
-         title: "Find Nearby Specialists",
-         uri: `https://www.google.com/maps/search/doctors+near+me`,
-         source: "Google Maps"
-       });
+       groundingUrls.push(
+         { title: "Nearby Specialist 1", uri: `https://www.google.com/maps/search/doctors+near+me`, source: "Google Maps" },
+         { title: "Nearby Specialist 2", uri: `https://www.google.com/maps/search/clinics+near+me`, source: "Google Maps" },
+         { title: "Nearby Specialist 3", uri: `https://www.google.com/maps/search/hospitals+near+me`, source: "Google Maps" }
+       );
     }
 
     return { text, groundingUrls };
@@ -185,13 +187,13 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 };
 
 // ==========================================
-// 4. TEXT TO SPEECH (FAST MODEL 🚀)
+// 4. TEXT TO SPEECH (MODEL KEPT SAME 🔒)
 // ==========================================
 
 export const generateTTS = async (text: string) => {
   try {
     const client = getGenAIClient();
-    // Using Flash-Exp for speed, as per your request
+    // 🛑 MODEL SAME AS YOU REQUESTED
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts', 
       contents: { parts: [{ text }] },
