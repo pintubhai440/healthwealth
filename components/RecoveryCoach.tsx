@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
 import { Modality, GoogleGenAI } from '@google/genai';
-import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video } from 'lucide-react';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
@@ -195,7 +195,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (AI POWERED) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (LINK MODE 🔥) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -219,21 +219,28 @@ export const RecoveryCoach: React.FC = () => {
             </div>
 
             {activeVideo ? (
-                <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video">
-                    <iframe 
-                        width="100%" 
-                        height="100%" 
-                        src={`https://www.youtube.com/embed/${activeVideo}?autoplay=1`}
-                        title="Exercise Video" 
-                        frameBorder="0" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowFullScreen
-                    ></iframe>
+                // 🔥 REPLACED IFRAME WITH LINK CARD
+                <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                        <Youtube className="w-16 h-16 text-red-600" />
+                    </div>
+                    <h4 className="text-xl font-bold text-slate-800 mb-2">Video Found!</h4>
+                    <p className="text-slate-600 mb-6 max-w-sm">
+                        We found a great tutorial for <strong>"{videoQuery}"</strong>. Click below to watch it directly on YouTube.
+                    </p>
+                    <a 
+                        href={`https://www.youtube.com/watch?v=${activeVideo}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 transition-transform hover:scale-105 shadow-lg shadow-red-200"
+                    >
+                        <Play className="w-5 h-5 fill-current" /> Watch on YouTube <ExternalLink className="w-4 h-4 opacity-70" />
+                    </a>
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
                     <Video className="w-10 h-10 mb-2 opacity-50" />
-                    <p>Search to find the best video</p>
+                    <p>Search to find the best video link</p>
                 </div>
             )}
         </div>
