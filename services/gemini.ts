@@ -287,7 +287,7 @@ export const analyzeExerciseFrame = async (base64Data: string, injury: string, e
 
     try {
         // Hum simple flash model use karenge jo super fast hai
-        const response = await generateContentWithRetry('gemini-2.5-flash-lite', {
+        const response = await generateContentWithRetry('gemini-2.5-flash-native-audio-preview-09-2025', {
             contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: base64Data } }, { text: prompt }] }
         });
         return response.text?.trim() || "Keep going.";
