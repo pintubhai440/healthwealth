@@ -37,28 +37,19 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
 };
 
 const cleanJSON = (text: string) => {
-  if (!text) return [];
+  if (!text) return {};
   try {
     const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    return Array.isArray(parsed) ? parsed : [];
+    return JSON.parse(clean);
   } catch (e) {
-    return [];
+    return { error: "AI format error." };
   }
-};
-
-// 🔥 NEW HELPER: Code se ID nikaalne ke liye (100% Accurate)
-const extractYouTubeID = (url: string) => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
 };
 
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (SAME AS BEFORE)
+// 2. TRIAGE CHAT (FIXED PROMPT HERE ✅)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -69,6 +60,7 @@ export const runTriageTurn = async (
 ) => {
   const model = CHAT_MODEL_NAME;
 
+  // 🔥 FIXED SYSTEM INSTRUCTION: Added "Hidden Thought" rules
   let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
   
   CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
@@ -160,7 +152,7 @@ export const runTriageTurn = async (
 };
 
 // ==========================================
-// 3. MEDIA UTILS (SAME AS BEFORE)
+// 3. AUDIO TRANSCRIPTION
 // ==========================================
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
@@ -171,6 +163,9 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
   } catch (e) { return ""; }
 };
 
+// ==========================================
+// 4. TEXT TO SPEECH
+// ==========================================
 export const generateTTS = async (text: string) => {
   try {
     const response = await generateContentWithRetry('gemini-2.5-flash-preview-tts', {
@@ -181,6 +176,9 @@ export const generateTTS = async (text: string) => {
   } catch (e) { return null; }
 };
 
+// ==========================================
+// 5. IMAGE & VIDEO ANALYSIS
+// ==========================================
 export const analyzeImage = async (base64Data: string, mimeType: string, type: 'MEDICINE' | 'DERM') => {
   const prompt = type === 'MEDICINE' ? "Identify medicine. Return JSON: {name, purpose, dosage_warning}." : "Analyze skin. Return JSON: {condition_name, verdict, explanation, recommended_action}.";
   try {
@@ -202,6 +200,9 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
   } catch (e) { return { error: "Failed to analyze video." }; }
 };
 
+// ==========================================
+// 6. DIET PLAN (FIXED PROMPT)
+// ==========================================
 export const generateDietPlan = async (condition: string) => {
   const prompt = `You are a Nutritionist. Create a recovery diet plan for: ${condition}.
   RETURN ONLY PURE JSON with this exact structure (no markdown):
@@ -227,75 +228,25 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (FIXED & ROBUST 🔥)
+// 7. YOUTUBE VIDEO FINDER (NEW 🔥)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  // AI ko bol rahe hain: "Bhai dimag mat laga, bas LINK dhoond ke de"
-  const prompt = `You are a helpful assistant. Use Google Search to find 4-5 popular, playable YouTube videos for: "${query}".
-  
-  Return ONLY a pure JSON array (no markdown). Structure:
-  [
-    { "title": "Exact Video Title", "url": "https://www.youtube.com/watch?v=..." }
-  ]
-  
-  IMPORTANT: Provide the FULL YouTube link found in search results.`;
+  const prompt = `Find a popular, embeddable YouTube video ID for: "${query}". 
+  Return ONLY the 11-character Video ID string (e.g., dQw4w9WgXcQ). 
+  Do NOT return a URL. Do NOT return Markdown. Just the ID.`;
 
   try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
-        contents: prompt,
-        // Google Search Tool is ON
-        config: { 
-            responseMimeType: "application/json",
-            tools: [{ googleSearch: {} }] 
-        }
-    });
-    
-    const text = response.text || "[]";
-    const rawData = cleanJSON(text);
-
-    // 🔥 LOGIC CHANGE: URL se ID hum code se nikalenge, AI par bharosa nahi karenge
-    if (Array.isArray(rawData)) {
-        const processedData = rawData.map((item: any) => ({
-             title: item.title,
-             // Helper function ID nikalega
-             videoId: item.url ? extractYouTubeID(item.url) : null
-        })).filter((item: any) => item.videoId !== null); // Agar ID nahi mili toh list se hata do
-        
-        return processedData;
-    }
-    return [];
-
+    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
+    const text = response.text?.trim() || "";
+    // Clean up if AI adds extra text
+    const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
+    return videoId;
   } catch (error) {
-    console.error("Video Search Error:", error);
-    return [];
+    return null;
   }
 };
 
-// ==========================================
-// 8. LIVE COACH FRAME ANALYZER (NEW 🔥)
-// ==========================================
-export const analyzeExerciseFrame = async (base64Data: string, injury: string, exercise: string) => {
-    const prompt = `You are a strict Physical Therapist.
-    User Context:
-    - Injury/Condition: "${injury}"
-    - Current Exercise: "${exercise}"
-    
-    Task: Analyze the person's form in this image. 
-    1. If form is dangerous for their injury, start with "STOP!".
-    2. If form is okay, give a short correction or encouragement.
-    3. Keep response strictly under 12 words (spoken style).`;
-
-    try {
-        // Hum simple flash model use karenge jo super fast hai
-        const response = await generateContentWithRetry('gemini-2.5-flash-native-audio-preview-09-2025', {
-            contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: base64Data } }, { text: prompt }] }
-        });
-        return response.text?.trim() || "Keep going.";
-    } catch (e) {
-        return "";
-    }
-};
-
+// Helper function needed for Triage
 const getGenAIClient = () => {
     const apiKey = getRandomKey();
     return new GoogleGenAI({ apiKey });
