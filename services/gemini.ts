@@ -17,7 +17,7 @@ const getRandomKey = () => {
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
-// Helper: Sleep function
+// Helper: Sleep for retry delay
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const generateContentWithRetry = async (modelName: string, params: any, retries = 3) => {
@@ -54,7 +54,7 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT
+// 2. TRIAGE CHAT (UNCHANGED & PERFECT ✅)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -224,9 +224,10 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (FIXED)
+// 7. YOUTUBE VIDEO FINDER (RETURNS ID 🆔)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
+  // AI se bol rahe hain sirf ID do
   const prompt = `Find the most popular, valid YouTube video ID for: "${query}". 
   Example: if query is 'Surya Namaskar', return '7c2gpGMj3TE'.
   Return ONLY the 11-character Video ID string. Do not write anything else.`;
@@ -234,6 +235,7 @@ export const findYoutubeVideo = async (query: string) => {
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
     const text = response.text?.trim() || "";
+    // Clean up text
     const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
     return videoId;
   } catch (error) {
@@ -241,5 +243,4 @@ export const findYoutubeVideo = async (query: string) => {
   }
 };
 
-// Helper for live client
 export const ai = new GoogleGenAI({ apiKey: "LEGACY" });
