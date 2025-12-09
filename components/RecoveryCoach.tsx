@@ -47,7 +47,7 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic ---
+  // --- Video Search Logic (AI ID Finder) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
@@ -166,7 +166,7 @@ export const RecoveryCoach: React.FC = () => {
       {/* --- TAB 1: DIET PLAN --- */}
       {activeTab === 'PLAN' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Recovery Diet & Videos</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-4">Recovery Diet Generator</h3>
             <div className="flex flex-col md:flex-row gap-2 mb-6">
                 <input type="text" placeholder="Condition (e.g. Viral Fever)" value={condition} onChange={(e) => setCondition(e.target.value)} className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none" />
                 <select value={days} onChange={(e) => setDays(e.target.value)} className="p-3 border rounded-xl bg-slate-50 outline-none">
@@ -190,7 +190,7 @@ export const RecoveryCoach: React.FC = () => {
                         ))}
                     </div>
 
-                    {/* Curated Videos (Clickable Links) */}
+                    {/* Curated Videos */}
                     <h4 className="font-bold text-slate-700 pt-2 flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600"/> Recommended Videos</h4>
                     <div className="grid md:grid-cols-2 gap-3">
                        {dietPlan.youtube_queries?.map((q: string, i: number) => (
@@ -206,7 +206,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (CLICKABLE THUMBNAIL) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (CLICKABLE THUMBNAIL ✅) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -234,13 +234,13 @@ export const RecoveryCoach: React.FC = () => {
                    href={`https://www.youtube.com/watch?v=${activeVideo}`} 
                    target="_blank" 
                    rel="noreferrer"
-                   className="block relative group rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video cursor-pointer"
+                   className="block relative group rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video cursor-pointer transform transition-all hover:scale-[1.01]"
                 >
-                    {/* High Quality Thumbnail */}
+                    {/* Thumbnail Image */}
                     <img 
                        src={`https://img.youtube.com/vi/${activeVideo}/hqdefault.jpg`} 
                        alt="Video Thumbnail"
-                       className="w-full h-full object-cover opacity-80 group-hover:opacity-60 transition-opacity"
+                       className="w-full h-full object-cover opacity-90 group-hover:opacity-75 transition-opacity"
                     />
                     
                     {/* Play Button Overlay */}
@@ -248,7 +248,9 @@ export const RecoveryCoach: React.FC = () => {
                         <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
                             <Play className="w-8 h-8 text-white fill-current ml-1" />
                         </div>
-                        <p className="mt-3 text-white font-bold text-lg drop-shadow-md">Click to Watch on YouTube</p>
+                        <p className="mt-3 text-white font-bold text-lg drop-shadow-md flex items-center gap-2">
+                            Click to Watch on YouTube <ExternalLink className="w-4 h-4" />
+                        </p>
                     </div>
                 </a>
             ) : (
