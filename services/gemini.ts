@@ -193,7 +193,7 @@ export const generateTTS = async (text: string) => {
     const client = getGenAIClient();
     // Using Flash-Exp for speed, as per your request
     const response = await client.models.generateContent({
-      model: 'gemini-2.0-flash-exp', 
+      model: 'gemini-2.5-flash-preview-tts', 
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
