@@ -36,7 +36,7 @@ export const runTriageTurn = async (
   userLocation?: { lat: number; lng: number }
 ) => {
   // 👇 FIX: Correct model name
-  const model = 'gemini-1.5-flash';
+  const model = 'gemini-2.0-flash';
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -101,7 +101,7 @@ export const runTriageTurn = async (
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -147,7 +147,7 @@ export const analyzeImage = async (
   type: 'MEDICINE' | 'DERM'
 ) => {
   // 👇 FIX: Use 1.5-pro (Standard powerful model)
-  const model = 'gemini-1.5-pro'; 
+  const model = 'gemini-2.5-pro'; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -195,7 +195,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 
   try {
     const response = await aiScanner.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -221,7 +221,7 @@ export const generateDietPlan = async (condition: string) => {
   
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
