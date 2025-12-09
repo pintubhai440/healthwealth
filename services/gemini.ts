@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// 1. KEY ROTATION LOGIC (ROBUST 🛡️)
+// 1. KEY ROTATION LOGIC (THE HACK 🛠️)
 // ==========================================
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
@@ -17,9 +17,7 @@ const getRandomKey = () => {
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
-// Helper: Sleep for retry delay
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
+// RETRY WRAPPER (To handle 429 Errors)
 const generateContentWithRetry = async (modelName: string, params: any, retries = 3) => {
   let lastError;
   for (let i = 0; i < retries; i++) {
@@ -30,9 +28,8 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
       return response; 
     } catch (error: any) {
       lastError = error;
-      // 429 Quota Error Handling
       if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
-         await sleep(2000); 
+         console.warn(`Attempt ${i + 1} failed (Quota). Retrying...`);
          continue; 
       }
       throw error; 
@@ -54,7 +51,7 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (UNCHANGED & PERFECT ✅)
+// 2. TRIAGE CHAT (RESTORED PERFECT VERSION ✅)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -103,6 +100,7 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
+    // 1. Extract Maps Data (Standard)
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
@@ -112,6 +110,7 @@ export const runTriageTurn = async (
       })
       .filter(item => item !== null);
 
+    // 2. AGGRESSIVE CLEANER (Restored logic to fix UI breakage 🧹)
     const lines = text.split('\n');
     const cleanLines: string[] = [];
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?google\.com\/maps[^)]+)\)/;
@@ -131,20 +130,30 @@ export const runTriageTurn = async (
     });
     text = cleanLines.join('\n').trim();
 
+    // 3. SMART FALLBACK (To ensure 3 cards always appear)
     if (step === 2 && groundingUrls.length < 3) {
        let doctorType = "Doctor";
        if (text.toLowerCase().includes("dermatologist")) doctorType = "Dermatologist";
        else if (text.toLowerCase().includes("neurologist")) doctorType = "Neurologist";
        
        const needed = 3 - groundingUrls.length;
+       const fallbacks = [
+         { title: `Top Rated ${doctorType}s`, uri: `http://googleusercontent.com/maps.google.com/search?q=${doctorType}+near+me` },
+         { title: `Nearest ${doctorType} Clinic`, uri: `http://googleusercontent.com/maps.google.com/search?q=${doctorType}+clinic` },
+         { title: `${doctorType}s Open Now`, uri: `http://googleusercontent.com/maps.google.com/search?q=${doctorType}+open+now` }
+       ];
+       
        for(let i=0; i<needed; i++) {
-          groundingUrls.push({ title: `Nearby ${doctorType}`, uri: `http://googleusercontent.com/maps.google.com/search?q=${doctorType}+near+me`, source: "Google Maps" });
+          groundingUrls.push(fallbacks[i]);
        }
     }
 
     return { text, groundingUrls };
 
-  } catch (error) { throw error; }
+  } catch (error) {
+    console.error("Triage Error:", error);
+    throw error;
+  }
 };
 
 // ==========================================
@@ -176,9 +185,10 @@ export const generateTTS = async (text: string) => {
 // 5. IMAGE & VIDEO ANALYSIS
 // ==========================================
 export const analyzeImage = async (base64Data: string, mimeType: string, type: 'MEDICINE' | 'DERM') => {
+  const model = CHAT_MODEL_NAME;
   const prompt = type === 'MEDICINE' ? "Identify medicine. Return JSON: {name, purpose, dosage_warning}." : "Analyze skin. Return JSON: {condition_name, verdict, explanation, recommended_action}.";
   try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
+    const response = await generateContentWithRetry(model, {
       contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
       config: { responseMimeType: "application/json" }
     });
@@ -197,11 +207,12 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN
+// 6. DIET PLAN (FIXED PROMPT FOR JSON ✅)
 // ==========================================
 export const generateDietPlan = async (condition: string) => {
+  // STRICT PROMPT: Ensure JSON output for empty diet bug
   const prompt = `You are a Nutritionist. Create a recovery diet plan for: ${condition}.
-  RETURN ONLY PURE JSON with this exact structure (no markdown):
+  RETURN ONLY PURE JSON with this exact structure (no markdown, no extra text):
   {
     "advice": "Short professional advice string",
     "meals": [
@@ -220,26 +231,6 @@ export const generateDietPlan = async (condition: string) => {
     return cleanJSON(response.text || "{}");
   } catch (error) {
     return { error: "Could not generate diet plan." };
-  }
-};
-
-// ==========================================
-// 7. YOUTUBE VIDEO FINDER (RETURNS ID 🆔)
-// ==========================================
-export const findYoutubeVideo = async (query: string) => {
-  // AI se bol rahe hain sirf ID do
-  const prompt = `Find the most popular, valid YouTube video ID for: "${query}". 
-  Example: if query is 'Surya Namaskar', return '7c2gpGMj3TE'.
-  Return ONLY the 11-character Video ID string. Do not write anything else.`;
-
-  try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
-    const text = response.text?.trim() || "";
-    // Clean up text
-    const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
-    return videoId;
-  } catch (error) {
-    return null;
   }
 };
 
