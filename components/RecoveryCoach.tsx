@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
 import { Modality, GoogleGenAI } from '@google/genai';
-import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video } from 'lucide-react';
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
@@ -47,7 +47,7 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic (AI ID Finder) ---
+  // --- Video Search Logic (AI POWERED) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
@@ -55,9 +55,12 @@ export const RecoveryCoach: React.FC = () => {
       try {
           const videoId = await findYoutubeVideo(videoQuery);
           if(videoId) setActiveVideo(videoId);
-          else alert("No video found.");
-      } catch(e) { console.error(e); } 
-      finally { setVideoLoading(false); }
+          else alert("No video found. Try a different keyword.");
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setVideoLoading(false);
+      }
   };
 
   // --- Live Coach Logic ---
@@ -177,10 +180,8 @@ export const RecoveryCoach: React.FC = () => {
                 </button>
             </div>
             {dietPlan && (
-                <div className="space-y-4 animate-in fade-in">
+                <div className="space-y-4">
                     <div className="bg-emerald-50 p-4 rounded-xl text-emerald-800 text-sm">{dietPlan.advice}</div>
-                    
-                    {/* Diet Cards */}
                     <div className="grid md:grid-cols-3 gap-4">
                         {dietPlan.meals?.map((meal: any, idx: number) => (
                             <div key={idx} className="border p-4 rounded-xl">
@@ -189,24 +190,12 @@ export const RecoveryCoach: React.FC = () => {
                             </div>
                         ))}
                     </div>
-
-                    {/* Curated Videos */}
-                    <h4 className="font-bold text-slate-700 pt-2 flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600"/> Recommended Videos</h4>
-                    <div className="grid md:grid-cols-2 gap-3">
-                       {dietPlan.youtube_queries?.map((q: string, i: number) => (
-                           <a key={i} href={`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors group">
-                               <div className="bg-white p-2 rounded-full shadow-sm group-hover:scale-110 transition-transform"><Play className="w-4 h-4 text-red-600 fill-current" /></div>
-                               <span className="text-sm font-medium text-slate-700 group-hover:text-red-700">Watch: {q}</span>
-                               <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
-                           </a>
-                       ))}
-                    </div>
                 </div>
             )}
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (CLICKABLE THUMBNAIL ✅) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (AI POWERED) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -215,7 +204,7 @@ export const RecoveryCoach: React.FC = () => {
             <div className="flex gap-2 mb-6">
                 <input 
                     type="text" 
-                    placeholder="Enter name (e.g. Surya Namaskar)" 
+                    placeholder="Enter Yoga or Exercise name (e.g. Surya Namaskar)" 
                     value={videoQuery} 
                     onChange={(e) => setVideoQuery(e.target.value)} 
                     className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-red-500"
@@ -230,29 +219,17 @@ export const RecoveryCoach: React.FC = () => {
             </div>
 
             {activeVideo ? (
-                <a 
-                   href={`https://www.youtube.com/watch?v=${activeVideo}`} 
-                   target="_blank" 
-                   rel="noreferrer"
-                   className="block relative group rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video cursor-pointer transform transition-all hover:scale-[1.01]"
-                >
-                    {/* Thumbnail Image */}
-                    <img 
-                       src={`https://img.youtube.com/vi/${activeVideo}/hqdefault.jpg`} 
-                       alt="Video Thumbnail"
-                       className="w-full h-full object-cover opacity-90 group-hover:opacity-75 transition-opacity"
-                    />
-                    
-                    {/* Play Button Overlay */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
-                            <Play className="w-8 h-8 text-white fill-current ml-1" />
-                        </div>
-                        <p className="mt-3 text-white font-bold text-lg drop-shadow-md flex items-center gap-2">
-                            Click to Watch on YouTube <ExternalLink className="w-4 h-4" />
-                        </p>
-                    </div>
-                </a>
+                <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video">
+                    <iframe 
+                        width="100%" 
+                        height="100%" 
+                        src={`https://www.youtube.com/embed/${activeVideo}?autoplay=1`}
+                        title="Exercise Video" 
+                        frameBorder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowFullScreen
+                    ></iframe>
+                </div>
             ) : (
                 <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
                     <Video className="w-10 h-10 mb-2 opacity-50" />
