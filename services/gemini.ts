@@ -1,19 +1,19 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// CLIENT SETUP (Dual Key Support)
+// CLIENT SETUP
 // ==========================================
 
-// Client 1: Use First Key
+// Client 1: First Key
 const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
 if (!apiKey1) console.error("API_KEY is missing! Check Vercel Env Variables.");
 const ai = new GoogleGenAI({ apiKey: apiKey1 });
 
-// Client 2: Use Second Key (if available) to distribute load
+// Client 2: Second Key (Fallback to First if missing)
 const apiKey2 = process.env.API_KEY_2 || apiKey1;
 const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
 
-// Helper to clean JSON response (Markdown fix)
+// Helper to clean JSON
 const cleanJSON = (text: string) => {
   if (!text) return {};
   try {
@@ -25,8 +25,12 @@ const cleanJSON = (text: string) => {
   }
 };
 
+// 👇 STABLE MODELS FROM CHANGELOG (Ye abhi active hain)
+const MODEL_FLASH = 'gemini-1.5-flash-002'; 
+const MODEL_PRO = 'gemini-1.5-pro-002';
+
 // ==========================================
-// 1. TRIAGE CHAT (Uses Gemini 1.5 Flash - FIXES QUOTA ERROR)
+// 1. TRIAGE CHAT
 // ==========================================
 
 export const runTriageTurn = async (
@@ -35,8 +39,7 @@ export const runTriageTurn = async (
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  // 👇 FIX: 1.5-flash use kar rahe hain kyunki 2.5 ka quota khatam ho gaya hai
-  const model = 'gemini-1.5-flash';
+  const model = MODEL_FLASH;
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
@@ -101,9 +104,8 @@ export const runTriageTurn = async (
 
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   try {
-    // 👇 FIX: Using 1.5-flash for reliability
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: MODEL_FLASH,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -124,9 +126,11 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
 
 export const generateTTS = async (text: string) => {
   try {
-    // 2.0 Flash Exp might still work for TTS specifically, if not, we handle error
+    // TTS ke liye 2.0 Flash Exp try karte hain, agar wo bhi band ho to standard use karenge
+    // Lekin Changelog ke hisab se ye abhi active hai
+    const model = 'gemini-2.0-flash-exp'; 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp', 
+      model,
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
@@ -149,8 +153,8 @@ export const analyzeImage = async (
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  // 👇 FIX: Using 'gemini-1.5-pro' instead of 2.5 to avoid quota errors
-  const model = 'gemini-1.5-pro'; 
+  // Using Stable Pro Model
+  const model = MODEL_PRO; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
@@ -165,7 +169,6 @@ export const analyzeImage = async (
   }
 
   try {
-    // Uses 'aiScanner' (Second Key)
     const response = await aiScanner.models.generateContent({
       model,
       contents: {
@@ -182,7 +185,7 @@ export const analyzeImage = async (
     return cleanJSON(response.text || "{}");
   } catch (error: any) {
     console.error("MediScanner Error:", error);
-    return { error: `AI Error: ${error.message || "Unknown error"}` };
+    return { error: `AI Error: Please try again. (${error.message || 'Unknown'})` };
   }
 };
 
@@ -196,9 +199,8 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
   Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
   try {
-    // 👇 FIX: Using 1.5-flash
     const response = await aiScanner.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: MODEL_FLASH,
       contents: {
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -223,9 +225,8 @@ export const generateDietPlan = async (condition: string) => {
   const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
   try {
-    // 👇 FIX: Using 1.5-flash
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: MODEL_FLASH,
       contents: prompt,
       config: { responseMimeType: "application/json" }
     });
