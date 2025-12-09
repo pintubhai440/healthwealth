@@ -271,6 +271,31 @@ export const findYoutubeVideo = async (query: string) => {
   }
 };
 
+// ==========================================
+// 8. LIVE COACH FRAME ANALYZER (NEW 🔥)
+// ==========================================
+export const analyzeExerciseFrame = async (base64Data: string, injury: string, exercise: string) => {
+    const prompt = `You are a strict Physical Therapist.
+    User Context:
+    - Injury/Condition: "${injury}"
+    - Current Exercise: "${exercise}"
+    
+    Task: Analyze the person's form in this image. 
+    1. If form is dangerous for their injury, start with "STOP!".
+    2. If form is okay, give a short correction or encouragement.
+    3. Keep response strictly under 12 words (spoken style).`;
+
+    try {
+        // Hum simple flash model use karenge jo super fast hai
+        const response = await generateContentWithRetry('gemini-2.5-flash-lite', {
+            contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: base64Data } }, { text: prompt }] }
+        });
+        return response.text?.trim() || "Keep going.";
+    } catch (e) {
+        return "";
+    }
+};
+
 const getGenAIClient = () => {
     const apiKey = getRandomKey();
     return new GoogleGenAI({ apiKey });
