@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
 import { Modality, GoogleGenAI } from '@google/genai';
-import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
@@ -18,7 +18,8 @@ export const RecoveryCoach: React.FC = () => {
 
   // Video Search State
   const [videoQuery, setVideoQuery] = useState('');
-  const [activeVideo, setActiveVideo] = useState<string | null>(null);
+  // 🔥 CHANGED: Now storing an array of videos
+  const [videoResults, setVideoResults] = useState<Array<{ title: string; videoId: string }>>([]);
   const [videoLoading, setVideoLoading] = useState(false);
 
   // Live Coach State
@@ -47,15 +48,18 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic (AI POWERED) ---
+  // --- Video Search Logic (UPDATED FOR LIST) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
-      setActiveVideo(null);
+      setVideoResults([]); // Clear old results
       try {
-          const videoId = await findYoutubeVideo(videoQuery);
-          if(videoId) setActiveVideo(videoId);
-          else alert("No video found. Try a different keyword.");
+          const results = await findYoutubeVideo(videoQuery);
+          if (Array.isArray(results) && results.length > 0) {
+            setVideoResults(results);
+          } else {
+            alert("No videos found. Try a different keyword.");
+          }
       } catch(e) {
           console.error(e);
       } finally {
@@ -195,7 +199,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (LINK MODE 🔥) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (MULTI-RESULT LIST 🔥) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -218,29 +222,33 @@ export const RecoveryCoach: React.FC = () => {
                 </button>
             </div>
 
-            {activeVideo ? (
-                // 🔥 REPLACED IFRAME WITH LINK CARD
-                <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
-                    <div className="bg-white p-4 rounded-full shadow-sm mb-4">
-                        <Youtube className="w-16 h-16 text-red-600" />
-                    </div>
-                    <h4 className="text-xl font-bold text-slate-800 mb-2">Video Found!</h4>
-                    <p className="text-slate-600 mb-6 max-w-sm">
-                        We found a great tutorial for <strong>"{videoQuery}"</strong>. Click below to watch it directly on YouTube.
-                    </p>
-                    <a 
-                        href={`https://www.youtube.com/watch?v=${activeVideo}`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 transition-transform hover:scale-105 shadow-lg shadow-red-200"
-                    >
-                        <Play className="w-5 h-5 fill-current" /> Watch on YouTube <ExternalLink className="w-4 h-4 opacity-70" />
-                    </a>
+            {videoResults.length > 0 ? (
+                // 🔥 NEW: LIST OF RESULTS
+                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                    {videoResults.map((video, idx) => (
+                        <div key={idx} className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl hover:border-red-200 hover:shadow-md transition-all">
+                            <div className="flex items-center gap-3 mb-3 sm:mb-0 w-full sm:w-auto">
+                                <div className="bg-white p-2 rounded-lg text-red-600 shadow-sm shrink-0">
+                                    <Youtube className="w-6 h-6" />
+                                </div>
+                                <h4 className="font-bold text-slate-800 text-sm line-clamp-1">{video.title}</h4>
+                            </div>
+                            
+                            <a 
+                                href={`https://www.youtube.com/watch?v=${video.videoId}`} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <Play className="w-3 h-3 fill-current" /> Watch <ExternalLink className="w-3 h-3 opacity-70" />
+                            </a>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
                     <Video className="w-10 h-10 mb-2 opacity-50" />
-                    <p>Search to find the best video link</p>
+                    <p>Search to find top videos</p>
                 </div>
             )}
         </div>
