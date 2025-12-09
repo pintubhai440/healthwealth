@@ -6,18 +6,19 @@ export default defineConfig(({ mode }) => {
     // Load all env variables
     const env = loadEnv(mode, '.', '');
 
-    // Filter out all keys starting with GEMINI_API_KEY_
-    // This creates a pool of keys: ['key1', 'key2', 'key3'...]
+    // 🛠️ HACK: Collect all keys starting with GEMINI_API_KEY_
+    // Example: GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.
     const apiKeys = Object.keys(env)
       .filter(key => key.startsWith('GEMINI_API_KEY'))
       .map(key => env[key]);
 
-    // Agar koi specific keys nahi mili, toh fallback API_KEY use karega
-    if (apiKeys.length === 0 && env.API_KEY) {
-      apiKeys.push(env.API_KEY);
-    }
+    // Fallback: Agar numbering nahi ki hai, toh normal key utha lo
     if (apiKeys.length === 0 && env.GEMINI_API_KEY) {
       apiKeys.push(env.GEMINI_API_KEY);
+    }
+    // Agar API_KEY naam se hai toh wo bhi le lo
+    if (apiKeys.length === 0 && env.API_KEY) {
+      apiKeys.push(env.API_KEY);
     }
 
     return {
@@ -27,7 +28,7 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        // Hum saari keys ko ek Array banakar bhej rahe hain
+        // Hum keys ka 'Pool' bana kar bhej rahe hain
         'process.env.GEMINI_KEYS_POOL': JSON.stringify(apiKeys),
       },
       resolve: {
