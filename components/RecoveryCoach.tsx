@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { generateDietPlan } from '../services/gemini';
+import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
 import { Modality, GoogleGenAI } from '@google/genai';
 import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video } from 'lucide-react';
 
@@ -19,6 +19,7 @@ export const RecoveryCoach: React.FC = () => {
   // Video Search State
   const [videoQuery, setVideoQuery] = useState('');
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
 
   // Live Coach State
   const [connected, setConnected] = useState(false);
@@ -44,6 +45,22 @@ export const RecoveryCoach: React.FC = () => {
       setDietPlan(plan);
     } catch (e) { console.error(e); } 
     finally { setDietLoading(false); }
+  };
+
+  // --- Video Search Logic (AI POWERED) ---
+  const handleVideoSearch = async () => {
+      if(!videoQuery) return;
+      setVideoLoading(true);
+      setActiveVideo(null);
+      try {
+          const videoId = await findYoutubeVideo(videoQuery);
+          if(videoId) setActiveVideo(videoId);
+          else alert("No video found. Try a different keyword.");
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setVideoLoading(false);
+      }
   };
 
   // --- Live Coach Logic ---
@@ -73,7 +90,6 @@ export const RecoveryCoach: React.FC = () => {
       processor.connect(audioCtx.destination);
 
       const client = new GoogleGenAI({ apiKey: getRandomKey() });
-      // LIVE MODEL (Fastest) - Using Exp model for low latency
       const session = await client.live.connect({
         model: 'gemini-2.0-flash-exp', 
         config: {
@@ -179,11 +195,11 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (NEW FEATURE) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (AI POWERED) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Exercise Video Finder</h3>
-            <p className="text-slate-500 text-sm mb-4">Find Yoga or Exercises instantly.</p>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
+            <p className="text-slate-500 text-sm mb-4">Smart search for Yoga & Exercises.</p>
             
             <div className="flex gap-2 mb-6">
                 <input 
@@ -194,11 +210,11 @@ export const RecoveryCoach: React.FC = () => {
                     className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-red-500"
                 />
                 <button 
-                    onClick={() => setActiveVideo(videoQuery)}
-                    disabled={!videoQuery}
+                    onClick={handleVideoSearch}
+                    disabled={!videoQuery || videoLoading}
                     className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-red-700 flex items-center gap-2"
                 >
-                    <Search className="w-4 h-4" /> Search
+                    {videoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
                 </button>
             </div>
 
@@ -207,7 +223,7 @@ export const RecoveryCoach: React.FC = () => {
                     <iframe 
                         width="100%" 
                         height="100%" 
-                        src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(activeVideo)}`}
+                        src={`https://www.youtube.com/embed/${activeVideo}?autoplay=1`}
                         title="Exercise Video" 
                         frameBorder="0" 
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
@@ -217,7 +233,7 @@ export const RecoveryCoach: React.FC = () => {
             ) : (
                 <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
                     <Video className="w-10 h-10 mb-2 opacity-50" />
-                    <p>Search to play video</p>
+                    <p>Search to find the best video</p>
                 </div>
             )}
         </div>
