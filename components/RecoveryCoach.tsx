@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateDietPlan, findYoutubeVideo, analyzeExerciseFrame } from '../services/gemini';
-import { Play, Mic, MicOff, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink, StopCircle, Volume2 } from 'lucide-react';
+import { Play, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink, StopCircle, Volume2, Trophy, RotateCcw } from 'lucide-react';
 
 export const RecoveryCoach: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'VIDEO' | 'COACH'>('PLAN');
@@ -21,22 +21,21 @@ export const RecoveryCoach: React.FC = () => {
   const [coachFeedback, setCoachFeedback] = useState("AI Waiting...");
   const [feedbackColor, setFeedbackColor] = useState("text-slate-200");
   
+  // 🔥 NEW: Scoring State
+  const [repCount, setRepCount] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<any>(null);
 
-  // 🔥 NEW: Browser Speech Function (Zero Latency)
+  // Browser Speech
   const speakFeedback = (text: string) => {
     if (!window.speechSynthesis) return;
-    
-    // Purani baat cancel karo taaki nayi baat turant bole
     window.speechSynthesis.cancel();
-
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US"; // English voice
-    utterance.rate = 1.1; // Thoda fast bolega
-    utterance.pitch = 1.0;
-    
+    utterance.lang = "en-US";
+    utterance.rate = 1.1;
     window.speechSynthesis.speak(utterance);
   };
 
@@ -71,10 +70,11 @@ export const RecoveryCoach: React.FC = () => {
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
       
       setIsCoachActive(true);
+      setShowSummary(false); // Hide summary if restarting
+      setRepCount(0);        // Reset Score
       setCoachFeedback("Connecting...");
-      speakFeedback("Starting AI Coach session. Get in position.");
+      speakFeedback("Starting session. Let's count those reps.");
 
-      // Loop: Har 4 second mein check karega
       intervalRef.current = setInterval(async () => {
          if (!videoRef.current || !canvasRef.current) return;
          
@@ -84,25 +84,26 @@ export const RecoveryCoach: React.FC = () => {
             canvasRef.current.height = videoRef.current.videoHeight;
             ctx.drawImage(videoRef.current, 0, 0);
             
-            // Image Quality thodi low rakhi hai taaki fast upload ho (0.4)
             const base64 = canvasRef.current.toDataURL('image/jpeg', 0.4).split(',')[1];
             
             setCoachFeedback("Watching...");
             
-            // AI Analysis
             const feedback = await analyzeExerciseFrame(base64, coachForm.ailment, coachForm.exerciseName);
             
             if (feedback && feedback.length > 2) {
                 setCoachFeedback(feedback);
                 
-                // Colors
-                if (feedback.toLowerCase().includes("stop") || feedback.toLowerCase().includes("bad")) {
+                // 🔥 SCORING LOGIC: Agar feedback negative nahi hai, toh count badhao
+                const isNegative = feedback.toLowerCase().includes("stop") || feedback.toLowerCase().includes("bad") || feedback.toLowerCase().includes("wrong");
+                
+                if (isNegative) {
                     setFeedbackColor("text-red-400 font-bold animate-pulse");
                 } else {
                     setFeedbackColor("text-green-400 font-medium");
+                    // Increment Score
+                    setRepCount(prev => prev + 1);
                 }
 
-                // 🔥 Speak Result Immediately
                 speakFeedback(feedback);
             }
          }
@@ -115,9 +116,15 @@ export const RecoveryCoach: React.FC = () => {
   };
 
   const stopCoaching = () => {
+     if (isCoachActive) {
+        // 🔥 Show Summary when manually stopped
+        setShowSummary(true);
+        speakFeedback(`Session finished. You completed approximately ${repCount} good repetitions.`);
+     }
+
      setIsCoachActive(false);
      if (intervalRef.current) clearInterval(intervalRef.current);
-     if (window.speechSynthesis) window.speechSynthesis.cancel(); // Awaz band karo
+     if (window.speechSynthesis) window.speechSynthesis.cancel();
      if (videoRef.current && videoRef.current.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
      }
@@ -197,7 +204,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 3: LIVE COACH (FIXED & SPEAKING) --- */}
+      {/* --- TAB 3: LIVE COACH (SCORING & SUMMARY) --- */}
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
@@ -211,11 +218,12 @@ export const RecoveryCoach: React.FC = () => {
                     <button onClick={() => setIsCoachSetupDone(true)} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold mt-2">Setup Coach</button>
                 </div>
             ) : (
-                <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4">
+                <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4 group">
                     <video ref={videoRef} muted className={`w-full h-full object-cover transform scale-x-[-1] ${!isCoachActive && 'opacity-50'}`} />
                     <canvas ref={canvasRef} className="hidden" />
                     
-                    {!isCoachActive && (
+                    {/* START BUTTON */}
+                    {!isCoachActive && !showSummary && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                             <button onClick={startCoaching} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2">
                                 <Play className="w-5 h-5 fill-current" /> Start Analysis
@@ -223,21 +231,55 @@ export const RecoveryCoach: React.FC = () => {
                         </div>
                     )}
 
+                    {/* LIVE OVERLAY */}
                     {isCoachActive && (
                         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col items-center">
-                             <div className="flex items-center gap-2 mb-2 text-xs text-slate-400 uppercase tracking-widest">
-                                <Volume2 className="w-3 h-3 animate-pulse" /> AI Speaking
+                             <div className="flex items-center justify-between w-full mb-4 px-4">
+                                <div className="flex items-center gap-2 text-xs text-slate-400 uppercase tracking-widest">
+                                    <Volume2 className="w-3 h-3 animate-pulse" /> AI Speaking
+                                </div>
+                                <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full border border-white/20">
+                                    <Trophy className="w-3 h-3 text-yellow-400" />
+                                    <span className="text-sm font-bold text-yellow-400">Score: {repCount}</span>
+                                </div>
                              </div>
+                             
                             <div className={`text-xl font-bold text-center mb-4 px-4 py-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 ${feedbackColor}`}>
                                 "{coachFeedback}"
                             </div>
-                            <button onClick={stopCoaching} className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg">
+                            <button onClick={stopCoaching} className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg hover:scale-105 transition-transform">
                                 <StopCircle className="w-4 h-4" /> Stop Session
                             </button>
                         </div>
                     )}
+
+                    {/* 🔥 SUMMARY REPORT (Stop dabane ke baad) */}
+                    {showSummary && !isCoachActive && (
+                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+                            <Trophy className="w-16 h-16 text-yellow-400 mb-4 animate-bounce" />
+                            <h3 className="text-2xl font-bold text-white mb-2">Session Complete!</h3>
+                            <p className="text-slate-300 mb-6">You maintained good form for:</p>
+                            
+                            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-8">
+                                {repCount}
+                            </div>
+                            
+                            <button 
+                                onClick={() => { setShowSummary(false); startCoaching(); }}
+                                className="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-slate-200 transition-colors flex items-center gap-2"
+                            >
+                                <RotateCcw className="w-4 h-4" /> Restart Session
+                            </button>
+                            <button 
+                                onClick={() => setShowSummary(false)}
+                                className="mt-4 text-slate-400 text-sm hover:text-white underline"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    )}
                     
-                    {!isCoachActive && (
+                    {!isCoachActive && !showSummary && (
                         <button onClick={() => setIsCoachSetupDone(false)} className="absolute top-4 left-4 text-xs text-slate-400 hover:text-white underline">
                             ← Change Setup
                         </button>
