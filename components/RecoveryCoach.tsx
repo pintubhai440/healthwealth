@@ -1,43 +1,40 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { generateDietPlan, findYoutubeVideo, analyzeExerciseFrame } from '../services/gemini';
-import { Play, Activity, Salad, Youtube, Loader2, Dumbbell, Search, Video, ExternalLink, StopCircle, Volume2, Trophy, RotateCcw } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
+import { Modality, GoogleGenAI } from '@google/genai';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
+
+const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
+const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
+const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
 
 export const RecoveryCoach: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'VIDEO' | 'COACH'>('PLAN');
 
-  // Diet & Video State
+  // Diet State
   const [condition, setCondition] = useState('');
   const [days, setDays] = useState('3');
   const [dietPlan, setDietPlan] = useState<any>(null);
   const [dietLoading, setDietLoading] = useState(false);
+
+  // Video Search State
   const [videoQuery, setVideoQuery] = useState('');
-  const [videoResults, setVideoResults] = useState<Array<{ title: string; videoId: string }>>([]);
+  const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
 
   // Live Coach State
-  const [isCoachActive, setIsCoachActive] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [coachStatus, setCoachStatus] = useState("Ready");
   const [coachForm, setCoachForm] = useState({ ailment: '', exerciseName: '' });
   const [isCoachSetupDone, setIsCoachSetupDone] = useState(false);
-  const [coachFeedback, setCoachFeedback] = useState("AI Waiting...");
-  const [feedbackColor, setFeedbackColor] = useState("text-slate-200");
-  
-  // 🔥 NEW: Scoring State
-  const [repCount, setRepCount] = useState(0);
-  const [showSummary, setShowSummary] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalRef = useRef<any>(null);
-
-  // Browser Speech
-  const speakFeedback = (text: string) => {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 1.1;
-    window.speechSynthesis.speak(utterance);
-  };
+  const sessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const videoIntervalRef = useRef<number | null>(null);
 
   // --- Diet Logic ---
   const handleGetDiet = async () => {
@@ -50,87 +47,109 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic ---
+  // --- Video Search Logic (AI POWERED) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
-      setVideoResults([]);
+      setActiveVideo(null);
       try {
-          const results = await findYoutubeVideo(videoQuery);
-          if (results && results.length > 0) setVideoResults(results);
-          else alert("No videos found.");
-      } catch(e) { console.error(e); } 
-      finally { setVideoLoading(false); }
+          const videoId = await findYoutubeVideo(videoQuery);
+          if(videoId) setActiveVideo(videoId);
+          else alert("No video found. Try a different keyword.");
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setVideoLoading(false);
+      }
   };
 
-  // --- LIVE COACH LOGIC ---
-  const startCoaching = async () => {
+  // --- Live Coach Logic ---
+  const startLiveSession = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 360 } });
+      setCoachStatus("Connecting...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 320, height: 240 } });
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
-      
-      setIsCoachActive(true);
-      setShowSummary(false); // Hide summary if restarting
-      setRepCount(0);        // Reset Score
-      setCoachFeedback("Connecting...");
-      speakFeedback("Starting session. Let's count those reps.");
 
-      intervalRef.current = setInterval(async () => {
-         if (!videoRef.current || !canvasRef.current) return;
-         
-         const ctx = canvasRef.current.getContext('2d');
-         if(ctx) {
+      const audioCtx = new AudioContextClass({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      inputSourceRef.current = source;
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (!sessionRef.current || isMuted) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) pcmData[i] = inputData[i] * 32767;
+        const base64Audio = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+        sessionRef.current.sendRealtimeInput({ media: { mimeType: "audio/pcm;rate=16000", data: base64Audio } });
+      };
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      const client = new GoogleGenAI({ apiKey: getRandomKey() });
+      const session = await client.live.connect({
+        model: 'gemini-2.0-flash-exp', 
+        config: {
+            responseModalities: [Modality.AUDIO],
+            systemInstruction: `Coach for: "${coachForm.ailment}". Exercise: "${coachForm.exerciseName}". Give short feedback.`,
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+        }
+      });
+
+      session.on('content', (content: any) => {
+          const audioData = content.modelTurn?.parts?.[0]?.inlineData?.data;
+          if (audioData) playAudioResponse(audioData);
+      });
+
+      setConnected(true);
+      setCoachStatus("Active");
+      sessionRef.current = session;
+
+      videoIntervalRef.current = window.setInterval(() => {
+        if (!sessionRef.current || !canvasRef.current || !videoRef.current) return;
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
             canvasRef.current.width = videoRef.current.videoWidth;
             canvasRef.current.height = videoRef.current.videoHeight;
             ctx.drawImage(videoRef.current, 0, 0);
-            
-            const base64 = canvasRef.current.toDataURL('image/jpeg', 0.4).split(',')[1];
-            
-            setCoachFeedback("Watching...");
-            
-            const feedback = await analyzeExerciseFrame(base64, coachForm.ailment, coachForm.exerciseName);
-            
-            if (feedback && feedback.length > 2) {
-                setCoachFeedback(feedback);
-                
-                // 🔥 SCORING LOGIC: Agar feedback negative nahi hai, toh count badhao
-                const isNegative = feedback.toLowerCase().includes("stop") || feedback.toLowerCase().includes("bad") || feedback.toLowerCase().includes("wrong");
-                
-                if (isNegative) {
-                    setFeedbackColor("text-red-400 font-bold animate-pulse");
-                } else {
-                    setFeedbackColor("text-green-400 font-medium");
-                    // Increment Score
-                    setRepCount(prev => prev + 1);
-                }
-
-                speakFeedback(feedback);
-            }
-         }
-      }, 4000); 
-
-    } catch (err) {
-      alert("Camera access failed.");
-      setIsCoachActive(false);
-    }
+            const base64 = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+            sessionRef.current.sendRealtimeInput({ media: { mimeType: "image/jpeg", data: base64 } });
+        }
+      }, 1000); 
+    } catch (err) { setConnected(false); alert("Connection Failed."); }
   };
 
-  const stopCoaching = () => {
-     if (isCoachActive) {
-        // 🔥 Show Summary when manually stopped
-        setShowSummary(true);
-        speakFeedback(`Session finished. You completed approximately ${repCount} good repetitions.`);
-     }
-
-     setIsCoachActive(false);
-     if (intervalRef.current) clearInterval(intervalRef.current);
-     if (window.speechSynthesis) window.speechSynthesis.cancel();
-     if (videoRef.current && videoRef.current.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-     }
+  const playAudioResponse = async (base64Audio: string) => {
+    try {
+        const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+        const binary = atob(base64Audio);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for(let i=0; i<int16.length; i++) float32[i] = int16[i] / 32768.0;
+        const buffer = audioCtx.createBuffer(1, float32.length, 24000);
+        buffer.getChannelData(0).set(float32);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start();
+    } catch (e) { console.error(e); }
   };
 
-  useEffect(() => { return () => stopCoaching(); }, []);
+  const stopSession = () => {
+    if (sessionRef.current) sessionRef.current = null;
+    if (processorRef.current) processorRef.current.disconnect();
+    if (inputSourceRef.current) inputSourceRef.current.disconnect();
+    if (audioContextRef.current) audioContextRef.current.close();
+    if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+    if (videoRef.current && videoRef.current.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+    setConnected(false);
+    window.location.reload();
+  };
 
   return (
     <div className="space-y-6">
@@ -176,114 +195,76 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH --- */}
+      {/* --- TAB 2: VIDEO SEARCH (LINK MODE 🔥) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
+            <p className="text-slate-500 text-sm mb-4">Smart search for Yoga & Exercises.</p>
+            
             <div className="flex gap-2 mb-6">
-                <input type="text" placeholder="Enter Exercise name..." value={videoQuery} onChange={(e) => setVideoQuery(e.target.value)} className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none" />
-                <button onClick={handleVideoSearch} disabled={!videoQuery || videoLoading} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2">
+                <input 
+                    type="text" 
+                    placeholder="Enter Yoga or Exercise name (e.g. Surya Namaskar)" 
+                    value={videoQuery} 
+                    onChange={(e) => setVideoQuery(e.target.value)} 
+                    className="flex-1 p-3 border rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-red-500"
+                />
+                <button 
+                    onClick={handleVideoSearch}
+                    disabled={!videoQuery || videoLoading}
+                    className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-red-700 flex items-center gap-2"
+                >
                     {videoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
                 </button>
             </div>
-            {videoResults.length > 0 ? (
-                <div className="grid gap-3">
-                    {videoResults.map((video, idx) => (
-                        <div key={idx} className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl hover:shadow-md transition-all">
-                            <div className="flex items-center gap-4 mb-3 sm:mb-0 w-full sm:w-auto">
-                                <div className="bg-red-50 p-2 rounded-lg text-red-600"><Youtube className="w-6 h-6" /></div>
-                                <h4 className="font-bold text-slate-800 text-sm line-clamp-1">{video.title}</h4>
-                            </div>
-                            <a href={`https://www.youtube.com/watch?v=${video.videoId}`} target="_blank" rel="noreferrer" className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2">
-                                <Play className="w-4 h-4" /> Watch <ExternalLink className="w-3 h-3 opacity-70" />
-                            </a>
-                        </div>
-                    ))}
+
+            {activeVideo ? (
+                // 🔥 REPLACED IFRAME WITH LINK CARD
+                <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                        <Youtube className="w-16 h-16 text-red-600" />
+                    </div>
+                    <h4 className="text-xl font-bold text-slate-800 mb-2">Video Found!</h4>
+                    <p className="text-slate-600 mb-6 max-w-sm">
+                        We found a great tutorial for <strong>"{videoQuery}"</strong>. Click below to watch it directly on YouTube.
+                    </p>
+                    <a 
+                        href={`https://www.youtube.com/watch?v=${activeVideo}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 transition-transform hover:scale-105 shadow-lg shadow-red-200"
+                    >
+                        <Play className="w-5 h-5 fill-current" /> Watch on YouTube <ExternalLink className="w-4 h-4 opacity-70" />
+                    </a>
                 </div>
-            ) : !videoLoading && <div className="text-center text-slate-400 py-10">Search to find videos</div>}
+            ) : (
+                <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
+                    <Video className="w-10 h-10 mb-2 opacity-50" />
+                    <p>Search to find the best video link</p>
+                </div>
+            )}
         </div>
       )}
 
-      {/* --- TAB 3: LIVE COACH (SCORING & SUMMARY) --- */}
+      {/* --- TAB 3: LIVE COACH --- */}
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold flex items-center gap-2"><Dumbbell className="w-6 h-6 text-green-400" /> Live AI Coach</h3>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${isCoachActive ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>{isCoachActive ? "ACTIVE ●" : "READY"}</div>
+                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${connected ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>{connected ? "LIVE ●" : "OFFLINE"}</div>
             </div>
             {!isCoachSetupDone ? (
                 <div className="space-y-4">
-                    <input type="text" placeholder="Your Injury (e.g. Lower Back Pain)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.ailment} onChange={e => setCoachForm({...coachForm, ailment: e.target.value})} />
-                    <input type="text" placeholder="Exercise you want to do (e.g. Deadlift)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.exerciseName} onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})} />
-                    <button onClick={() => setIsCoachSetupDone(true)} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold mt-2">Setup Coach</button>
+                    <input type="text" placeholder="Injury (e.g. Back Pain)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.ailment} onChange={e => setCoachForm({...coachForm, ailment: e.target.value})} />
+                    <input type="text" placeholder="Exercise (e.g. Squats)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.exerciseName} onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})} />
+                    <button onClick={() => setIsCoachSetupDone(true)} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold mt-2">Open Camera</button>
                 </div>
             ) : (
-                <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4 group">
-                    <video ref={videoRef} muted className={`w-full h-full object-cover transform scale-x-[-1] ${!isCoachActive && 'opacity-50'}`} />
+                <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4">
+                    <video ref={videoRef} muted className={`w-full h-full object-cover transform scale-x-[-1] ${!connected && 'opacity-50'}`} />
                     <canvas ref={canvasRef} className="hidden" />
-                    
-                    {/* START BUTTON */}
-                    {!isCoachActive && !showSummary && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <button onClick={startCoaching} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2">
-                                <Play className="w-5 h-5 fill-current" /> Start Analysis
-                            </button>
-                        </div>
-                    )}
-
-                    {/* LIVE OVERLAY */}
-                    {isCoachActive && (
-                        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col items-center">
-                             <div className="flex items-center justify-between w-full mb-4 px-4">
-                                <div className="flex items-center gap-2 text-xs text-slate-400 uppercase tracking-widest">
-                                    <Volume2 className="w-3 h-3 animate-pulse" /> AI Speaking
-                                </div>
-                                <div className="flex items-center gap-1 bg-white/10 px-3 py-1 rounded-full border border-white/20">
-                                    <Trophy className="w-3 h-3 text-yellow-400" />
-                                    <span className="text-sm font-bold text-yellow-400">Score: {repCount}</span>
-                                </div>
-                             </div>
-                             
-                            <div className={`text-xl font-bold text-center mb-4 px-4 py-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 ${feedbackColor}`}>
-                                "{coachFeedback}"
-                            </div>
-                            <button onClick={stopCoaching} className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg hover:scale-105 transition-transform">
-                                <StopCircle className="w-4 h-4" /> Stop Session
-                            </button>
-                        </div>
-                    )}
-
-                    {/* 🔥 SUMMARY REPORT (Stop dabane ke baad) */}
-                    {showSummary && !isCoachActive && (
-                        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
-                            <Trophy className="w-16 h-16 text-yellow-400 mb-4 animate-bounce" />
-                            <h3 className="text-2xl font-bold text-white mb-2">Session Complete!</h3>
-                            <p className="text-slate-300 mb-6">You maintained good form for:</p>
-                            
-                            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-8">
-                                {repCount}
-                            </div>
-                            
-                            <button 
-                                onClick={() => { setShowSummary(false); startCoaching(); }}
-                                className="bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-slate-200 transition-colors flex items-center gap-2"
-                            >
-                                <RotateCcw className="w-4 h-4" /> Restart Session
-                            </button>
-                            <button 
-                                onClick={() => setShowSummary(false)}
-                                className="mt-4 text-slate-400 text-sm hover:text-white underline"
-                            >
-                                Close
-                            </button>
-                        </div>
-                    )}
-                    
-                    {!isCoachActive && !showSummary && (
-                        <button onClick={() => setIsCoachSetupDone(false)} className="absolute top-4 left-4 text-xs text-slate-400 hover:text-white underline">
-                            ← Change Setup
-                        </button>
-                    )}
+                    {!connected && <div className="absolute inset-0 flex flex-col items-center justify-center"><button onClick={startLiveSession} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2"><Play className="w-5 h-5 fill-current" /> Start Session</button></div>}
+                    {connected && <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent flex justify-between items-end"><div className="bg-slate-800/80 px-3 py-1 rounded text-sm text-green-300 border border-green-500/30">{coachStatus}</div><div className="flex gap-2"><button onClick={() => setIsMuted(!isMuted)} className={`p-3 rounded-full ${isMuted ? 'bg-red-500' : 'bg-slate-700'}`}>{isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}</button><button onClick={stopSession} className="bg-red-600 px-4 py-2 rounded-full font-bold text-sm">End</button></div></div>}
                 </div>
             )}
         </div>
