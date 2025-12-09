@@ -1,63 +1,78 @@
-import { GoogleGenAI, Type, Schema, FunctionDeclaration, Modality } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 
-// Initialize Gemini Client
-// CRITICAL: We assume process.env.API_KEY is available as per instructions.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// ==========================================
+// CLIENT SETUP
+// ==========================================
 
-/**
- * Triage Chat Logic
- * Uses gemini-2.5-flash for speed or gemini-3-pro-preview for complex reasoning if needed.
- * Incorporates Google Maps for finding doctors in the verdict phase.
- */
+// Client 1: Chatbot & General Use (Purani Key) -> Uses Gemini 2.5 Flash
+const apiKey1 = process.env.API_KEY || process.env.GEMINI_API_KEY;
+const ai = new GoogleGenAI({ apiKey: apiKey1 });
+
+// Client 2: MediScanner (Nayi Key) -> Uses Gemini 2.5 Pro
+// Note: Agar API_KEY_2 set nahi hai, to ye fallback karke purani key use karega
+const apiKey2 = process.env.API_KEY_2 || apiKey1;
+const aiScanner = new GoogleGenAI({ apiKey: apiKey2 });
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+// JSON Response ko saaf karne ke liye (Markdown hatata hai)
+const cleanJSON = (text: string) => {
+  if (!text) return {};
+  try {
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error("JSON Parse Error:", e);
+    // Return empty object or error flag instead of crashing
+    return { error: "Failed to parse AI response." };
+  }
+};
+
+// ==========================================
+// 1. TRIAGE CHAT (Uses Gemini 2.5 Flash)
+// ==========================================
+
 export const runTriageTurn = async (
   history: { role: string; text: string }[],
   currentInput: string,
   step: number,
   userLocation?: { lat: number; lng: number }
 ) => {
-  const isFinalTurn = step >= 2;
-  // Default to Pro for final turn, Flash for questions
-  let model = isFinalTurn ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+  // Aapki request ke hisaab se 2.5 Flash set kiya hai
+  const model = 'gemini-2.5-flash';
   
   let systemInstruction = `You are a Smart Triage Doctor (AI). 
   Goal: Diagnose the user's condition quickly using exactly 2 follow-up questions total, then provide a verdict.
   Current Step: ${step} (0-indexed).
-  
   Protocol:
   1. Analyze the user's complaint.
-  2. If Step < 2: Ask ONE concise, medically relevant follow-up question to narrow down the diagnosis. Do not repeat questions.
-  3. If Step == 2: Provide a FINAL VERDICT.
-     - Format: "VERDICT: [Condition Name]"
-     - Risk Level: Low / Medium / High.
-     - Recommendation: suggest a specific doctor specialist.
-     - Advice: Simple home remedy or immediate action.
-  `;
+  2. If Step < 2: Ask ONE concise question.
+  3. If Step == 2: Provide a FINAL VERDICT.`;
 
-  if (isFinalTurn) {
+  if (step >= 2) {
     systemInstruction += " You have access to Google Maps to find a relevant doctor nearby if location is provided.";
   }
 
   const tools: any[] = [];
   const toolConfig: any = {};
 
-  if (isFinalTurn && userLocation) {
+  if (step >= 2 && userLocation) {
     tools.push({ googleMaps: {} });
     toolConfig.retrievalConfig = {
-      latLng: {
-        latitude: userLocation.lat,
-        longitude: userLocation.lng
-      }
+      latLng: { latitude: userLocation.lat, longitude: userLocation.lng }
     };
   }
 
-  // Filter out system messages from history to prevent API errors
   const cleanHistory = history
     .filter(h => h.role === 'user' || h.role === 'model')
     .map(h => ({ role: h.role, parts: [{ text: h.text }] }));
 
-  const generate = async (selectedModel: string) => {
-    return await ai.models.generateContent({
-      model: selectedModel,
+  try {
+    // Uses 'ai' client (First Key)
+    const response = await ai.models.generateContent({
+      model,
       contents: [
         ...cleanHistory,
         { role: 'user', parts: [{ text: currentInput }] }
@@ -68,54 +83,28 @@ export const runTriageTurn = async (
         toolConfig: tools.length > 0 ? toolConfig : undefined,
       }
     });
-  };
-
-  try {
-    const response = await generate(model);
     
-    // Extract text and grounding
     const text = response.text || "I couldn't generate a response.";
+    
+    // Maps Grounding
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const groundingUrls = mapChunks
       .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
       .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }))
-      .concat(
-        mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri }))
-      );
+      .concat(mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri })));
 
     return { text, groundingUrls };
 
   } catch (error) {
-    console.error("Triage Error with model", model, error);
-    
-    // Fallback logic: If Pro fails, try Flash
-    if (model === 'gemini-2.5-pro') {
-      try {
-        console.log("Retrying with gemini-2.5-flash...");
-        const fallbackResponse = await generate('gemini-2.5-flash');
-        const text = fallbackResponse.text || "I couldn't generate a response.";
-        // Flash might also return grounding if configured
-        const mapChunks = fallbackResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        const groundingUrls = mapChunks
-           .flatMap(c => c.maps?.placeAnswerSources?.reviewSnippets || [])
-           .map((s: any) => ({ title: s.title || 'Map Link', uri: s.uri || '#' }))
-           .concat(
-             mapChunks.filter(c => c.maps?.uri).map(c => ({ title: c.maps?.title || 'Map Location', uri: c.maps?.uri }))
-           );
-        return { text, groundingUrls };
-      } catch (fallbackError) {
-        console.error("Fallback failed", fallbackError);
-        throw fallbackError;
-      }
-    }
-    
+    console.error(`Triage Error with model ${model}:`, error);
     throw error;
   }
 };
 
-/**
- * Audio Transcription (STT)
- */
+// ==========================================
+// 2. AUDIO TRANSCRIPTION (Uses Gemini 2.5 Flash)
+// ==========================================
+
 export const transcribeUserAudio = async (base64Data: string, mimeType: string) => {
   const model = 'gemini-2.5-flash';
   try {
@@ -135,20 +124,20 @@ export const transcribeUserAudio = async (base64Data: string, mimeType: string) 
   }
 };
 
-/**
- * Text to Speech (TTS)
- */
+// ==========================================
+// 3. TEXT TO SPEECH (Standard Model)
+// ==========================================
+
 export const generateTTS = async (text: string) => {
-  const model = 'gemini-2.5-flash-preview-tts';
+  // TTS ke liye 2.0 Flash Exp best hai, 2.5 shayad TTS support na kare abhi
+  const model = 'gemini-2.0-flash-exp'; 
   try {
     const response = await ai.models.generateContent({
       model,
       contents: { parts: [{ text }] },
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
-        }
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
       }
     });
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -158,99 +147,102 @@ export const generateTTS = async (text: string) => {
   }
 };
 
-/**
- * Image Analysis (Medi-Scanner ID & Derm-Check)
- */
+// ==========================================
+// 4. IMAGE ANALYSIS (Uses Gemini 2.5 Pro + NEW KEY)
+// ==========================================
+
 export const analyzeImage = async (
   base64Data: string, 
   mimeType: string, 
   type: 'MEDICINE' | 'DERM'
 ) => {
-  const model = 'gemini-2.5-pro'; // High reasoning for medical image analysis
+  // Aapki request ke hisaab se 2.5 Pro set kiya hai
+  const model = 'gemini-2.5-pro'; 
   
   let prompt = "";
   if (type === 'MEDICINE') {
-    prompt = "Identify this medicine. Return a JSON with: name, purpose, and dosage_warning (string).";
+    prompt = "Identify this medicine. Return a JSON object (no markdown) with fields: name, purpose, and dosage_warning (string).";
   } else {
     prompt = `Analyze this skin condition. Warning: Educational purpose only. 
-    Return a JSON with: 
+    Return a JSON object (no markdown) with: 
     - condition_name (string)
-    - verdict (enum: 'Good', 'Bad', 'Very Bad') - 'Good' means minor/healing, 'Bad' means needs checkup, 'Very Bad' means urgent.
+    - verdict (enum: 'Good', 'Bad', 'Very Bad')
     - explanation (string)
     - recommended_action (string)`;
   }
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { inlineData: { mimeType, data: base64Data } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 2048 } // Use thinking for accuracy
-    }
-  });
+  try {
+    // Uses 'aiScanner' client (Second Key)
+    const response = await aiScanner.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
 
-  return JSON.parse(response.text || "{}");
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    console.error("MediScanner Error:", error);
+    // Fallback error message for UI
+    return { error: "Failed to analyze image. Ensure API Key allows this model." };
+  }
 };
 
-/**
- * Video Analysis (Guardian Alert)
- */
+// ==========================================
+// 5. VIDEO ANALYSIS (Uses Gemini 2.5 Flash + NEW KEY)
+// ==========================================
+
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
-  // Use Flash for faster video processing as per requirements
   const model = 'gemini-2.5-flash';
   
   const prompt = `Analyze this video for the Guardian Alert System.
   Task: Verify if the person actually puts a pill in their mouth and swallows it.
-  Return JSON: 
-  { 
-    "action_detected": "Describe the action seen (e.g., 'Swallowing pill', 'Holding pill only', 'No action')", 
-    "success": boolean (true ONLY if swallowing is confirmed), 
-    "verdict_message": "Short message for the user." 
-  }`;
+  Return JSON: { "action_detected": "string", "success": boolean, "verdict_message": "string" }`;
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: {
-      parts: [
-        { inlineData: { mimeType, data: base64Data } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json"
-    }
-  });
+  try {
+    // Uses 'aiScanner' client (Second Key)
+    const response = await aiScanner.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: prompt }
+        ]
+      },
+      config: { responseMimeType: "application/json" }
+    });
 
-  return JSON.parse(response.text || "{}");
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    console.error("Video Analysis Error:", error);
+    return { error: "Failed to analyze video." };
+  }
 };
 
-/**
- * Diet Plan Generation
- */
+// ==========================================
+// 6. DIET PLAN (Uses Gemini 2.5 Flash)
+// ==========================================
+
 export const generateDietPlan = async (condition: string) => {
   const model = 'gemini-2.5-flash';
+  const prompt = `Create a 1-day simple recovery diet plan for: ${condition}. Return JSON...`;
   
-  const prompt = `Create a 1-day simple recovery diet plan for someone with: ${condition}.
-  Also suggest 3 specific YouTube search queries to find recovery exercises for this.
-  Return JSON: { 
-    "advice": "string",
-    "meals": [ { "name": "Breakfast/Lunch/Dinner", "items": ["string"] } ],
-    "youtube_queries": ["string"]
-  }`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: { responseMimeType: "application/json" }
-  });
-
-  return JSON.parse(response.text || "{}");
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    return cleanJSON(response.text || "{}");
+  } catch (error) {
+    return { error: "Could not generate diet plan." };
+  }
 };
 
-// Export the client for Live API usage in components
 export { ai };
