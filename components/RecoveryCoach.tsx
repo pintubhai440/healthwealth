@@ -1,6 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { generateDietPlan, findYoutubeVideo, analyzeExerciseVideo } from '../services/gemini';
-import { Play, Activity, Salad, Youtube, Loader2, Search, ExternalLink, Dumbbell, StopCircle, Video, CheckCircle, AlertCircle } from 'lucide-react';
+import { generateDietPlan, findYoutubeVideo } from '../services/gemini';
+import { Modality, GoogleGenAI } from '@google/genai';
+import { Play, Mic, MicOff, Activity, Salad, Youtube, Volume2, UserCheck, Loader2, StopCircle, ArrowRight, Dumbbell, Search, Video, ExternalLink } from 'lucide-react';
+
+const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
+const getRandomKey = () => keysPool.length > 0 ? keysPool[Math.floor(Math.random() * keysPool.length)] : (process.env.GEMINI_API_KEY || "MISSING_KEY");
+const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
 
 export const RecoveryCoach: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'PLAN' | 'VIDEO' | 'COACH'>('PLAN');
@@ -13,19 +18,23 @@ export const RecoveryCoach: React.FC = () => {
 
   // Video Search State
   const [videoQuery, setVideoQuery] = useState('');
-  const [videoResults, setVideoResults] = useState<any[]>([]); // Array for multiple videos
+  const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
 
-  // AI Coach State (Record -> Stop -> Analyze)
+  // Live Coach State
+  const [connected, setConnected] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [coachStatus, setCoachStatus] = useState("Ready");
   const [coachForm, setCoachForm] = useState({ ailment: '', exerciseName: '' });
   const [isCoachSetupDone, setIsCoachSetupDone] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [coachResult, setCoachResult] = useState<any>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const videoIntervalRef = useRef<number | null>(null);
 
   // --- Diet Logic ---
   const handleGetDiet = async () => {
@@ -38,15 +47,15 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic (3-5 Links) ---
+  // --- Video Search Logic (AI POWERED) ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
-      setVideoResults([]);
+      setActiveVideo(null);
       try {
-          const videos = await findYoutubeVideo(videoQuery);
-          if(videos && videos.length > 0) setVideoResults(videos);
-          else alert("No videos found. Try a specific keyword like 'Back Pain Yoga'.");
+          const videoId = await findYoutubeVideo(videoQuery);
+          if(videoId) setActiveVideo(videoId);
+          else alert("No video found. Try a different keyword.");
       } catch(e) {
           console.error(e);
       } finally {
@@ -54,67 +63,92 @@ export const RecoveryCoach: React.FC = () => {
       }
   };
 
-  // --- AI Coach Logic (Record -> Analyze) ---
-  const openCamera = async () => {
-     try {
-         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-         if (videoRef.current) {
-             videoRef.current.srcObject = stream;
-             videoRef.current.play();
-         }
-         setIsCoachSetupDone(true);
-         setCoachResult(null);
-     } catch(err) {
-         alert("Camera permission denied.");
-     }
-  };
+  // --- Live Coach Logic ---
+  const startLiveSession = async () => {
+    try {
+      setCoachStatus("Connecting...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 320, height: 240 } });
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
 
-  const startRecording = () => {
-      if (!videoRef.current?.srcObject) return;
-      
-      const stream = videoRef.current.srcObject as MediaStream;
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
+      const audioCtx = new AudioContextClass({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      inputSourceRef.current = source;
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
 
-      recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
+      processor.onaudioprocess = (e) => {
+        if (!sessionRef.current || isMuted) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) pcmData[i] = inputData[i] * 32767;
+        const base64Audio = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+        sessionRef.current.sendRealtimeInput({ media: { mimeType: "audio/pcm;rate=16000", data: base64Audio } });
       };
 
-      recorder.onstop = async () => {
-          setIsAnalyzing(true);
-          const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          reader.onloadend = async () => {
-              const base64 = (reader.result as string).split(',')[1];
-              try {
-                  const result = await analyzeExerciseVideo(base64, 'video/webm', coachForm.ailment, coachForm.exerciseName);
-                  setCoachResult(result);
-              } catch (e) {
-                  alert("Analysis failed. Try again.");
-              } finally {
-                  setIsAnalyzing(false);
-              }
-          };
-      };
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
 
-      recorder.start();
-      setIsRecording(true);
+      const client = new GoogleGenAI({ apiKey: getRandomKey() });
+      const session = await client.live.connect({
+        model: 'gemini-2.0-flash-exp', 
+        config: {
+            responseModalities: [Modality.AUDIO],
+            systemInstruction: `Coach for: "${coachForm.ailment}". Exercise: "${coachForm.exerciseName}". Give short feedback.`,
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+        }
+      });
+
+      session.on('content', (content: any) => {
+          const audioData = content.modelTurn?.parts?.[0]?.inlineData?.data;
+          if (audioData) playAudioResponse(audioData);
+      });
+
+      setConnected(true);
+      setCoachStatus("Active");
+      sessionRef.current = session;
+
+      videoIntervalRef.current = window.setInterval(() => {
+        if (!sessionRef.current || !canvasRef.current || !videoRef.current) return;
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+            canvasRef.current.width = videoRef.current.videoWidth;
+            canvasRef.current.height = videoRef.current.videoHeight;
+            ctx.drawImage(videoRef.current, 0, 0);
+            const base64 = canvasRef.current.toDataURL('image/jpeg', 0.5).split(',')[1];
+            sessionRef.current.sendRealtimeInput({ media: { mimeType: "image/jpeg", data: base64 } });
+        }
+      }, 1000); 
+    } catch (err) { setConnected(false); alert("Connection Failed."); }
   };
 
-  const stopRecording = () => {
-      mediaRecorderRef.current?.stop();
-      setIsRecording(false);
+  const playAudioResponse = async (base64Audio: string) => {
+    try {
+        const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+        const binary = atob(base64Audio);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for(let i=0; i<int16.length; i++) float32[i] = int16[i] / 32768.0;
+        const buffer = audioCtx.createBuffer(1, float32.length, 24000);
+        buffer.getChannelData(0).set(float32);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.start();
+    } catch (e) { console.error(e); }
   };
 
-  const resetCoach = () => {
-      setIsCoachSetupDone(false);
-      setCoachResult(null);
-      setCoachForm({ ailment: '', exerciseName: '' });
-      if (videoRef.current?.srcObject) {
-          (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
+  const stopSession = () => {
+    if (sessionRef.current) sessionRef.current = null;
+    if (processorRef.current) processorRef.current.disconnect();
+    if (inputSourceRef.current) inputSourceRef.current.disconnect();
+    if (audioContextRef.current) audioContextRef.current.close();
+    if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+    if (videoRef.current && videoRef.current.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+    setConnected(false);
+    window.location.reload();
   };
 
   return (
@@ -161,11 +195,11 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (LIST MODE 3-5 Links) --- */}
+      {/* --- TAB 2: VIDEO SEARCH (LINK MODE 🔥) --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
-            <p className="text-slate-500 text-sm mb-4">Find 3-5 best exercises for your condition.</p>
+            <p className="text-slate-500 text-sm mb-4">Smart search for Yoga & Exercises.</p>
             
             <div className="flex gap-2 mb-6">
                 <input 
@@ -184,114 +218,53 @@ export const RecoveryCoach: React.FC = () => {
                 </button>
             </div>
 
-            <div className="space-y-3">
-                {videoResults.length > 0 ? (
-                    videoResults.map((video: any, idx: number) => (
-                        <div key={idx} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between hover:bg-slate-100 transition-colors animate-in slide-in-from-bottom-2">
-                            <div className="flex items-center gap-4">
-                                <div className="bg-red-100 p-3 rounded-full text-red-600">
-                                    <Play className="w-5 h-5 fill-current" />
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-slate-800 text-sm md:text-base">{video.title}</h4>
-                                    <p className="text-xs text-slate-500">{video.channel}</p>
-                                </div>
-                            </div>
-                            <a 
-                                href={`https://www.youtube.com/watch?v=${video.id}`} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-colors"
-                            >
-                                <ExternalLink className="w-5 h-5" />
-                            </a>
-                        </div>
-                    ))
-                ) : (
-                    !videoLoading && (
-                        <div className="flex flex-col items-center justify-center h-32 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
-                            <Video className="w-8 h-8 mb-2 opacity-50" />
-                            <p>Enter a topic to see top 3 results</p>
-                        </div>
-                    )
-                )}
-            </div>
+            {activeVideo ? (
+                // 🔥 REPLACED IFRAME WITH LINK CARD
+                <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
+                    <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                        <Youtube className="w-16 h-16 text-red-600" />
+                    </div>
+                    <h4 className="text-xl font-bold text-slate-800 mb-2">Video Found!</h4>
+                    <p className="text-slate-600 mb-6 max-w-sm">
+                        We found a great tutorial for <strong>"{videoQuery}"</strong>. Click below to watch it directly on YouTube.
+                    </p>
+                    <a 
+                        href={`https://www.youtube.com/watch?v=${activeVideo}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2 transition-transform hover:scale-105 shadow-lg shadow-red-200"
+                    >
+                        <Play className="w-5 h-5 fill-current" /> Watch on YouTube <ExternalLink className="w-4 h-4 opacity-70" />
+                    </a>
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-400">
+                    <Video className="w-10 h-10 mb-2 opacity-50" />
+                    <p>Search to find the best video link</p>
+                </div>
+            )}
         </div>
       )}
 
-      {/* --- TAB 3: AI COACH (RECORD -> STOP -> SCORE) --- */}
+      {/* --- TAB 3: LIVE COACH --- */}
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold flex items-center gap-2"><Dumbbell className="w-6 h-6 text-blue-400" /> AI Coach</h3>
-                {isRecording && <div className="animate-pulse text-red-500 font-bold flex items-center gap-1">● REC</div>}
+                <h3 className="text-xl font-bold flex items-center gap-2"><Dumbbell className="w-6 h-6 text-green-400" /> Live AI Coach</h3>
+                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${connected ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>{connected ? "LIVE ●" : "OFFLINE"}</div>
             </div>
-
             {!isCoachSetupDone ? (
-                <div className="space-y-4 max-w-md mx-auto py-4">
-                    <p className="text-slate-400 text-sm text-center mb-4">Tell me about your pain and exercise.</p>
-                    <div className="space-y-3">
-                        <label className="text-xs text-slate-400 uppercase font-bold">Where is the pain?</label>
-                        <input type="text" placeholder="e.g. Lower Back" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-blue-500" value={coachForm.ailment} onChange={e => setCoachForm({...coachForm, ailment: e.target.value})} />
-                    </div>
-                    <div className="space-y-3">
-                        <label className="text-xs text-slate-400 uppercase font-bold">Exercise Name</label>
-                        <input type="text" placeholder="e.g. Squats" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-blue-500" value={coachForm.exerciseName} onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})} />
-                    </div>
-                    <button onClick={openCamera} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold mt-4 shadow-lg shadow-blue-900/20">Open Camera Coach</button>
+                <div className="space-y-4">
+                    <input type="text" placeholder="Injury (e.g. Back Pain)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.ailment} onChange={e => setCoachForm({...coachForm, ailment: e.target.value})} />
+                    <input type="text" placeholder="Exercise (e.g. Squats)" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white outline-none" value={coachForm.exerciseName} onChange={e => setCoachForm({...coachForm, exerciseName: e.target.value})} />
+                    <button onClick={() => setIsCoachSetupDone(true)} disabled={!coachForm.ailment || !coachForm.exerciseName} className="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded-lg font-bold mt-2">Open Camera</button>
                 </div>
             ) : (
-                <div className="space-y-4">
-                    {/* VIDEO AREA */}
-                    <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 shadow-2xl">
-                        {!coachResult && !isAnalyzing ? (
-                             <video ref={videoRef} muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
-                        ) : isAnalyzing ? (
-                             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-10">
-                                 <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-                                 <p className="text-blue-200 font-medium animate-pulse">Analyzing your form...</p>
-                             </div>
-                        ) : (
-                             // RESULT OVERLAY
-                             <div className="absolute inset-0 bg-slate-900/95 p-6 flex flex-col items-center justify-center text-center animate-in zoom-in-95">
-                                 <div className={`p-4 rounded-full mb-4 ${parseInt(coachResult.score) > 7 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                                     <h2 className="text-5xl font-bold">{coachResult.score}/10</h2>
-                                 </div>
-                                 <h3 className="text-xl font-bold text-white mb-2">Analysis Complete</h3>
-                                 <p className="text-slate-300 max-w-sm mb-6">{coachResult.feedback}</p>
-                                 
-                                 <div className="bg-slate-800 p-4 rounded-xl text-left w-full max-w-sm mb-6">
-                                     <h4 className="text-sm font-bold text-blue-400 mb-2 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Tips to Improve</h4>
-                                     <ul className="text-sm text-slate-300 space-y-1 list-disc list-inside">
-                                         {coachResult.tips?.map((tip: string, i: number) => <li key={i}>{tip}</li>)}
-                                     </ul>
-                                 </div>
-                                 
-                                 <button onClick={resetCoach} className="bg-slate-700 hover:bg-slate-600 px-6 py-2 rounded-full text-sm font-bold">Try Another Exercise</button>
-                             </div>
-                        )}
-                        
-                        {/* CONTROLS (Only visible when no result) */}
-                        {!coachResult && !isAnalyzing && (
-                            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4">
-                                {!isRecording ? (
-                                    <button onClick={startRecording} className="bg-red-600 hover:bg-red-500 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-all border-4 border-slate-900">
-                                        <div className="w-6 h-6 bg-white rounded-sm"></div> 
-                                    </button>
-                                ) : (
-                                    <button onClick={stopRecording} className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 border border-slate-600 animate-pulse">
-                                        <StopCircle className="w-5 h-5 text-red-500" /> Stop & Analyze
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                    
-                    {!coachResult && (
-                        <p className="text-center text-slate-500 text-xs">
-                            {isRecording ? "Exercise now! Press Stop when done." : "Press the Red button to start recording."}
-                        </p>
-                    )}
+                <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-slate-700 mb-4">
+                    <video ref={videoRef} muted className={`w-full h-full object-cover transform scale-x-[-1] ${!connected && 'opacity-50'}`} />
+                    <canvas ref={canvasRef} className="hidden" />
+                    {!connected && <div className="absolute inset-0 flex flex-col items-center justify-center"><button onClick={startLiveSession} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg transform hover:scale-105 transition-all flex items-center gap-2"><Play className="w-5 h-5 fill-current" /> Start Session</button></div>}
+                    {connected && <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 to-transparent flex justify-between items-end"><div className="bg-slate-800/80 px-3 py-1 rounded text-sm text-green-300 border border-green-500/30">{coachStatus}</div><div className="flex gap-2"><button onClick={() => setIsMuted(!isMuted)} className={`p-3 rounded-full ${isMuted ? 'bg-red-500' : 'bg-slate-700'}`}>{isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}</button><button onClick={stopSession} className="bg-red-600 px-4 py-2 rounded-full font-bold text-sm">End</button></div></div>}
                 </div>
             )}
         </div>
