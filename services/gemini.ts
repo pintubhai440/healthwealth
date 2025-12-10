@@ -228,100 +228,22 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (MULTIPLE VIDEOS) 🔥
-// ==========================================
-export const findYoutubeVideos = async (query: string, count: number = 5) => {
-  const prompt = `Find ${count} popular, relevant YouTube videos for: "${query}" (Yoga/Exercise tutorial). 
-  Return ONLY a JSON array of video IDs. Example: ["dQw4w9WgXcQ", "abc123def45", "xyz789pqr01"]
-  Do NOT return markdown, explanation, or URLs. Just the array.`;
-
-  try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
-    
-    const text = response.text?.trim() || "";
-    let videoIds: string[] = [];
-    
-    try {
-      // Try to parse JSON
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-      if (Array.isArray(parsed)) {
-        videoIds = parsed.slice(0, count);
-      }
-    } catch {
-      // Fallback: extract any 11-character video IDs from text
-      const idRegex = /[a-zA-Z0-9_-]{11}/g;
-      const matches = text.match(idRegex) || [];
-      videoIds = matches.slice(0, count);
-    }
-    
-    // Ensure we have unique IDs
-    videoIds = [...new Set(videoIds)].filter(id => id.length === 11);
-    
-    // If we still don't have enough, add fallbacks for common searches
-    if (videoIds.length < count) {
-      const fallbackIds: Record<string, string[]> = {
-        'surya namaskar': ['_PjX0Fh6PQQ', 'QZ4H2Q2N_7w', 'zT-9hVK6pVM', 'iC5Qk0DIFv4', 'L1qKqQ8Q1vU'],
-        'yoga': ['v7AYKMP6rOE', 'pWak2F3hP0E', 'sTANio_2E0Q', '4pKly2JojMw', 'AbRlL5M1QJs'],
-        'exercise': ['IODxDxX7oi4', 'mlVetheEU0k', 'cD8SbLCp3Fw', 'Q6d4wj5Q5vI', 'WIH0-XB5-6I'],
-        'pushup': ['IODxDxX7oi4', 'Eh00_rniF8E', 't1jG2qK1-7k', 'oocF7g5W6xg', 'qy2Pc8j8H-g'],
-        'squat': ['aclHkVaku9U', 'YaXPRqUwItQ', 'QmYjQ5y4-1E', 'U3HlEF_E9fY', 'bEv6CCg2BC8'],
-        'back pain': ['9OG6pVZ9Toc', '2LUdn9-mf6s', '9bR-elyulBw', 'iC5Qk0DIFv4', 'QZ4H2Q2N_7w']
-      };
-      
-      const lowerQuery = query.toLowerCase();
-      for (const [key, ids] of Object.entries(fallbackIds)) {
-        if (lowerQuery.includes(key) && videoIds.length < count) {
-          // Add only new IDs
-          ids.forEach(id => {
-            if (!videoIds.includes(id) && videoIds.length < count) {
-              videoIds.push(id);
-            }
-          });
-          break;
-        }
-      }
-    }
-    
-    return videoIds.slice(0, count);
-  } catch (error) {
-    console.error("YouTube search error:", error);
-    return [];
-  }
-};
-
-// ==========================================
-// 8. EXERCISE FORM ANALYSIS
-// ==========================================
-export const analyzeExerciseForm = async (base64Image: string, exercise: string) => {
-  const prompt = `Analyze this person doing ${exercise}. Give feedback on:
-  1. Form correctness (score 1-10)
-  2. Key improvements needed
-  3. Safety tips
-  Return JSON: {score: number, feedback: string, tips: string[]}`;
-  
-  try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
-      contents: { parts: [
-        { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-        { text: prompt }
-      ]},
-      config: { responseMimeType: "application/json" }
-    });
-    return cleanJSON(response.text || "{}");
-  } catch (e: any) {
-    return { score: 0, feedback: "Analysis failed. Please try again.", tips: ["Ensure good lighting", "Show full body"] };
-  }
-};
-
-// ==========================================
-// 9. BACKWARD COMPATIBILITY
+// 7. YOUTUBE VIDEO FINDER (NEW 🔥)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  const videos = await findYoutubeVideos(query, 1);
-  return videos[0] || null;
+  const prompt = `Find a popular, embeddable YouTube video ID for: "${query}". 
+  Return ONLY the 11-character Video ID string (e.g., dQw4w9WgXcQ). 
+  Do NOT return a URL. Do NOT return Markdown. Just the ID.`;
+
+  try {
+    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
+    const text = response.text?.trim() || "";
+    // Clean up if AI adds extra text
+    const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
+    return videoId;
+  } catch (error) {
+    return null;
+  }
 };
 
 // Helper function needed for Triage
@@ -331,17 +253,3 @@ const getGenAIClient = () => {
 };
 
 export const ai = getGenAIClient();
-
-// Export all functions
-export {
-  runTriageTurn,
-  transcribeUserAudio,
-  generateTTS,
-  analyzeImage,
-  analyzeMedicineVideo,
-  generateDietPlan,
-  findYoutubeVideo,
-  findYoutubeVideos,
-  analyzeExerciseForm,
-  ai
-};
