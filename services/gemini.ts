@@ -1,5 +1,5 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-
+'use server';
+import { GoogleGenAI, Modality } from "@google/genai"
 // ==========================================
 // 1. KEY ROTATION LOGIC (UPDATED FOR YOUR VERCEL SETUP ✅)
 // ==========================================
