@@ -13,7 +13,8 @@
     "react-dom": "^19.2.1",
     "@google/genai": "^1.31.0",
     "lucide-react": "^0.556.0",
-    "@emailjs/browser": "^4.3.0"
+    "@emailjs/browser": "^4.3.0",
+    "react-markdown": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
