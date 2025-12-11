@@ -4,16 +4,30 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // 1. KEY ROTATION LOGIC (NO CHANGES)
 // ==========================================
 
-const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
+// ✅ YEH NAYA CODE PASTE KAREIN
+const getAllKeys = () => {
+  const keys: string[] = [];
 
-if (keysPool.length === 0) {
-  console.warn("⚠️ Warning: No API Keys found. Using fallback.");
-} else {
-  console.log(`✅ Loaded ${keysPool.length} API Keys for rotation.`);
-}
+  // Vite Pool Support (Browser Safe)
+  if (process.env.GEMINI_KEYS_POOL) {
+    const pool = process.env.GEMINI_KEYS_POOL;
+    if (Array.isArray(pool)) {
+      keys.push(...pool);
+    } else if (typeof pool === 'string') {
+      keys.push(...(pool as string).split(',').map(k => k.trim()));
+    }
+  }
+
+  // Fallback
+  if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
+  
+  return Array.from(new Set(keys)).filter(k => !!k);
+};
+
+const keysPool = getAllKeys();
 
 const getRandomKey = () => {
-  if (keysPool.length === 0) return process.env.GEMINI_API_KEY || process.env.API_KEY || "MISSING_KEY";
+  if (keysPool.length === 0) return "MISSING_KEY";
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
@@ -52,6 +66,7 @@ const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite';
 // 2. TRIAGE CHAT (RESTORED ORIGINAL LOGIC ✅)
 // ==========================================
 
+// ✅ YEH NAYA TRIAGE FUNCTION PASTE KAREIN
 export const runTriageTurn = async (
   history: { role: string; text: string }[],
   currentInput: string,
@@ -60,27 +75,26 @@ export const runTriageTurn = async (
 ) => {
   const model = CHAT_MODEL_NAME;
 
-  let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
-  CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
-  - Current Step: ${step}/3
+  let systemInstruction = `You are a professional, empathetic Medical Triage AI.
+  CURRENT STATUS: Step ${step}/3.
   
-  YOUR GOAL:
-  1. Analyze the user's complaint.
-  2. If Step < 2: Ask ONE concise, relevant follow-up question to clarify symptoms. Do NOT list protocols.
-  3. If Step == 2: Provide a specific VERDICT (e.g., "Likely Migraine", "Possible Infection") and recommend a doctor type.
+  GOAL:
+  1. Analyze symptoms.
+  2. If Step < 2: Ask 1 follow-up question.
+  3. If Step == 2: Give a VERDICT and recommend a doctor.
 
-  CRITICAL RULES:
-  - **NEVER** output the text "Step:", "Protocol:", or "Analyze complaint." to the user.
-  - Speak naturally like a caring human doctor.
-  - Keep responses short (under 50 words unless giving a verdict).
-  
-  MAPPING INSTRUCTIONS (Only for Step 2):
-  - When recommending a doctor (e.g., Dermatologist), imply you are checking nearby.
-  - You MUST generate exactly 3 distinct location options using the 'googleMaps' tool if available.
+  MAP RULES (CRITICAL):
+  - You MUST use the 'googleMaps' tool to find **specific real clinics/hospitals**.
+  - **DO NOT generate generic search links.**
+  - Return distinct locations with their actual addresses if possible.
+
+  FORMATTING:
+  - Use Markdown for bolding (**Verdict**).
+  - Keep response short.
   `;
 
   if (step >= 2) {
-    systemInstruction += " Use Google Maps to find 3 real locations.";
+    systemInstruction += " Find 3 specific real doctors nearby using Google Maps.";
   }
 
   const tools: any[] = [];
@@ -103,47 +117,40 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
-    // --- MAPS EXTRACTION LOGIC (This was missing/broken before) ---
+    // --- MAPS EXTRACTION ---
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
         if (c.maps?.uri) return { title: c.maps.title || "Medical Center", uri: c.maps.uri, source: "Google Maps" };
-        if (c.web?.uri && c.web.uri.includes('maps.google.com')) return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
+        if (c.web?.uri && c.web.uri.includes('google.com/maps')) return { title: c.web.title || "Doctor Location", uri: c.web.uri, source: "Google Maps" };
         return null;
       })
       .filter(item => item !== null);
 
-    // Cleaner Logic
+    // Fallback Extraction
     const lines = text.split('\n');
     const cleanLines: string[] = [];
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?google\.com\/maps[^)]+)\)/;
-    const bareLinkRegex = /(https?:\/\/(?:www\.)?google\.com\/maps\S+)/;
 
     lines.forEach(line => {
         const markdownMatch = line.match(linkRegex);
-        const bareMatch = line.match(bareLinkRegex);
         if (markdownMatch) {
             groundingUrls.push({ title: markdownMatch[1].replace(/\*/g, '').trim(), uri: markdownMatch[2], source: "Google Maps" });
-        } else if (bareMatch) {
-            const nameMatch = line.match(/\*\*([^*]+)\*\*/); 
-            groundingUrls.push({ title: nameMatch ? nameMatch[1] : "View Location", uri: bareMatch[1], source: "Google Maps" });
         } else {
             cleanLines.push(line);
         }
     });
-    text = cleanLines.join('\n').trim();
-
-    // Fallback if AI fails to give maps but we are on Step 2
+    
+    // Fallback: If no maps found at step 2, force a search link with coordinates
     if (step === 2 && groundingUrls.length === 0) {
-       groundingUrls.push({ title: "Search Nearby Doctors", uri: "https://www.google.com/maps/search/doctors+near+me", source: "Google Maps" });
+       groundingUrls.push({ title: "Find Doctors Nearby", uri: `http://googleusercontent.com/maps.google.com/maps?q=doctors+near+${userLocation?.lat},${userLocation?.lng}`, source: "Google Maps" });
     }
 
-    return { text, groundingUrls };
+    return { text: cleanLines.join('\n').trim(), groundingUrls };
 
   } catch (error) { 
-      // Return safe error so app doesn't crash
       console.error(error);
-      return { text: "I'm having trouble connecting to the network, but you should see a doctor immediately.", groundingUrls: [] };
+      return { text: "Network error. Please consult a doctor directly.", groundingUrls: [] };
   }
 };
 
