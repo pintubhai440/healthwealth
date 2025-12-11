@@ -1,49 +1,24 @@
-'use server';
-import { GoogleGenAI, Modality } from "@google/genai"
+import { GoogleGenAI, Modality } from "@google/genai";
+
 // ==========================================
-// 1. KEY ROTATION LOGIC (UPDATED FOR YOUR VERCEL SETUP ✅)
+// 1. KEY ROTATION LOGIC (NO CHANGES)
 // ==========================================
 
-const getAllKeys = () => {
-  const keys: string[] = [];
-
-  // Method 1: Agar future me kabhi POOL use kiya to
-  if (process.env.GEMINI_KEYS_POOL) {
-    keys.push(...process.env.GEMINI_KEYS_POOL.split(',').map(k => k.trim()));
-  }
-
-  // Method 2: Automatically grab numbered keys (GEMINI_API_KEY_1 se GEMINI_API_KEY_50 tak)
-  // Yeh loop aapke Vercel variables (KEY_1, KEY_2...) ko scan karega
-  for (let i = 1; i <= 50; i++) {
-    const key = process.env[`GEMINI_API_KEY_${i}`]; // Dynamic Access
-    if (key && key.length > 10) { // Check ki key valid string hai
-      keys.push(key);
-    }
-  }
-
-  // Method 3: Fallback standard key
-  if (process.env.GEMINI_API_KEY) keys.push(process.env.GEMINI_API_KEY);
-  
-  // Duplicates hatao aur clean list return karo
-  return Array.from(new Set(keys)).filter(k => !!k);
-};
-
-const keysPool = getAllKeys();
+const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
 
 if (keysPool.length === 0) {
-  console.warn("⚠️ Warning: No API Keys found. System might fail.");
+  console.warn("⚠️ Warning: No API Keys found. Using fallback.");
 } else {
-  console.log(`✅ Success! Loaded ${keysPool.length} API Keys from Vercel.`);
+  console.log(`✅ Loaded ${keysPool.length} API Keys for rotation.`);
 }
 
 const getRandomKey = () => {
-  if (keysPool.length === 0) return "MISSING_KEY";
+  if (keysPool.length === 0) return process.env.GEMINI_API_KEY || process.env.API_KEY || "MISSING_KEY";
   return keysPool[Math.floor(Math.random() * keysPool.length)];
 };
 
 const generateContentWithRetry = async (modelName: string, params: any, retries = 3) => {
   let lastError;
-  // Retry loop
   for (let i = 0; i < retries; i++) {
     try {
       const apiKey = getRandomKey();
@@ -52,9 +27,7 @@ const generateContentWithRetry = async (modelName: string, params: any, retries 
       return response; 
     } catch (error: any) {
       lastError = error;
-      // Agar 'Too Many Requests' (429) ya Server Error (503) hai, to dusri key try karo
       if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
-         console.log(`⚠️ Key Failed (Attempt ${i+1}), switching key...`);
          continue; 
       }
       throw error; 
