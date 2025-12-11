@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { generateDietPlan, findYoutubeVideo, analyzeExerciseVideo } from '../services/gemini';
 import { Play, Activity, Salad, Youtube, Loader2, Search, ExternalLink, Dumbbell, StopCircle, Video, CheckCircle } from 'lucide-react';
 
@@ -26,6 +26,7 @@ export const RecoveryCoach: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null); // ✅ Added streamRef for safe access
 
   // --- Diet Logic ---
   const handleGetDiet = async () => {
@@ -38,7 +39,7 @@ export const RecoveryCoach: React.FC = () => {
     finally { setDietLoading(false); }
   };
 
-  // --- Video Search Logic (UPDATED: Search Links) ---
+  // --- Video Search Logic ---
   const handleVideoSearch = async () => {
       if(!videoQuery) return;
       setVideoLoading(true);
@@ -54,7 +55,7 @@ export const RecoveryCoach: React.FC = () => {
       }
   };
 
-  // --- AI Coach Logic (Black Screen Fix) ---
+  // --- AI Coach Logic (Fixed: Black Screen Issue) ---
   const openCamera = async () => {
      try {
          const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -62,26 +63,38 @@ export const RecoveryCoach: React.FC = () => {
              audio: false 
          });
          
-         if (videoRef.current) {
-             videoRef.current.srcObject = stream;
-             // Ensure these attributes are set to prevent black screen
-             videoRef.current.setAttribute("playsinline", "true"); 
-             videoRef.current.muted = true;
-             await videoRef.current.play();
-         }
+         // ✅ Store stream first, don't try to access videoRef yet
+         streamRef.current = stream;
          setIsCoachSetupDone(true);
          setCoachResult(null);
+         
      } catch(err) {
          console.error("Camera Error:", err);
          alert("Camera access failed. Please allow camera permissions in your browser settings.");
      }
   };
 
+  // ✅ New Effect: Attach stream ONLY when the video element is rendered
+  useEffect(() => {
+    if (isCoachSetupDone && videoRef.current && streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(e => console.error("Play Error:", e));
+    }
+  }, [isCoachSetupDone]);
+
+  // ✅ Cleanup Effect: Stop camera when component unmounts
+  useEffect(() => {
+    return () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+        }
+    };
+  }, []);
+
   const startRecording = () => {
-      if (!videoRef.current?.srcObject) return;
+      if (!streamRef.current) return; // Use streamRef for reliability
       
-      const stream = videoRef.current.srcObject as MediaStream;
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(streamRef.current);
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -120,8 +133,11 @@ export const RecoveryCoach: React.FC = () => {
       setIsCoachSetupDone(false);
       setCoachResult(null);
       setCoachForm({ ailment: '', exerciseName: '' });
-      if (videoRef.current?.srcObject) {
-          (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      
+      // ✅ Proper Cleanup
+      if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
       }
   };
 
@@ -169,7 +185,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 2: VIDEO SEARCH (100% WORKING LINKS) --- */}
+      {/* --- TAB 2: VIDEO SEARCH --- */}
       {activeTab === 'VIDEO' && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in fade-in">
             <h3 className="text-xl font-bold text-slate-800 mb-2">AI Video Finder</h3>
@@ -227,7 +243,7 @@ export const RecoveryCoach: React.FC = () => {
         </div>
       )}
 
-      {/* --- TAB 3: AI COACH (FIXED CAMERA) --- */}
+      {/* --- TAB 3: AI COACH (FIXED) --- */}
       {activeTab === 'COACH' && (
         <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 animate-in fade-in">
             <div className="flex items-center justify-between mb-6">
