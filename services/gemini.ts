@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ==========================================
-// 1. KEY ROTATION LOGIC (THE HACK 🛠️)
+// 1. KEY ROTATION LOGIC (NO CHANGES)
 // ==========================================
 
 const keysPool = (process.env.GEMINI_KEYS_POOL as unknown as string[]) || [];
@@ -49,7 +49,7 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (FIXED PROMPT HERE ✅)
+// 2. TRIAGE CHAT (RESTORED ORIGINAL LOGIC ✅)
 // ==========================================
 
 export const runTriageTurn = async (
@@ -60,9 +60,7 @@ export const runTriageTurn = async (
 ) => {
   const model = CHAT_MODEL_NAME;
 
-  // 🔥 FIXED SYSTEM INSTRUCTION: Added "Hidden Thought" rules
   let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
-  
   CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
   - Current Step: ${step}/3
   
@@ -105,7 +103,7 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
-    // Extract Maps Data
+    // --- MAPS EXTRACTION LOGIC (This was missing/broken before) ---
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
@@ -135,20 +133,18 @@ export const runTriageTurn = async (
     });
     text = cleanLines.join('\n').trim();
 
-    // Smart Fallback
-    if (step === 2 && groundingUrls.length < 3) {
-       let doctorType = "Doctor";
-       if (text.toLowerCase().includes("dermatologist")) doctorType = "Dermatologist";
-       
-       const needed = 3 - groundingUrls.length;
-       for(let i=0; i<needed; i++) {
-          groundingUrls.push({ title: `Nearby ${doctorType}`, uri: `http://googleusercontent.com/maps.google.com/search?q=${doctorType}+near+me`, source: "Google Maps" });
-       }
+    // Fallback if AI fails to give maps but we are on Step 2
+    if (step === 2 && groundingUrls.length === 0) {
+       groundingUrls.push({ title: "Search Nearby Doctors", uri: "https://www.google.com/maps/search/doctors+near+me", source: "Google Maps" });
     }
 
     return { text, groundingUrls };
 
-  } catch (error) { throw error; }
+  } catch (error) { 
+      // Return safe error so app doesn't crash
+      console.error(error);
+      return { text: "I'm having trouble connecting to the network, but you should see a doctor immediately.", groundingUrls: [] };
+  }
 };
 
 // ==========================================
@@ -201,7 +197,7 @@ export const analyzeMedicineVideo = async (base64Data: string, mimeType: string)
 };
 
 // ==========================================
-// 6. DIET PLAN (FIXED PROMPT)
+// 6. DIET PLAN
 // ==========================================
 export const generateDietPlan = async (condition: string) => {
   const prompt = `You are a Nutritionist. Create a recovery diet plan for: ${condition}.
@@ -228,28 +224,55 @@ export const generateDietPlan = async (condition: string) => {
 };
 
 // ==========================================
-// 7. YOUTUBE VIDEO FINDER (NEW 🔥)
+// 7. YOUTUBE VIDEO FINDER (UPDATED - SAFE SEARCH)
 // ==========================================
 export const findYoutubeVideo = async (query: string) => {
-  const prompt = `Find a popular, embeddable YouTube video ID for: "${query}". 
-  Return ONLY the 11-character Video ID string (e.g., dQw4w9WgXcQ). 
-  Do NOT return a URL. Do NOT return Markdown. Just the ID.`;
+  // Returns Array of 3 search terms instead of broken IDs
+  const prompt = `Generate 3 distinct, specific YouTube search queries for: "${query}".
+  RETURN ONLY PURE JSON ARRAY:
+  [
+    { "title": "Beginner Yoga for Back Pain", "search_term": "Yoga for Back Pain relief exercises" },
+    { "title": "10 Min Relief Workout", "search_term": "10 min back pain relief workout" },
+    { "title": "Physiotherapy Tips", "search_term": "Physiotherapy exercises for back pain" }
+  ]`;
 
   try {
-    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { contents: prompt });
-    const text = response.text?.trim() || "";
-    // Clean up if AI adds extra text
-    const videoId = text.split(' ')[0].replace(/[^a-zA-Z0-9_-]/g, ''); 
-    return videoId;
+    const response = await generateContentWithRetry(CHAT_MODEL_NAME, { 
+      contents: prompt,
+      config: { responseMimeType: "application/json" } 
+    });
+    const data = cleanJSON(response.text || "[]");
+    return Array.isArray(data) ? data : [];
   } catch (error) {
-    return null;
+    return [];
   }
 };
 
-// Helper function needed for Triage
-const getGenAIClient = () => {
-    const apiKey = getRandomKey();
-    return new GoogleGenAI({ apiKey });
+// ==========================================
+// 8. AI COACH EXERCISE ANALYZER (ADDED ✅)
+// ==========================================
+export const analyzeExerciseVideo = async (base64Data: string, mimeType: string, ailment: string, exercise: string) => {
+  const prompt = `You are an expert Physiotherapist AI. 
+  The user has "${ailment}" and is performing "${exercise}".
+  Analyze the video for form, safety, and correctness.
+  
+  RETURN PURE JSON:
+  {
+    "score": "Integer 1-10",
+    "feedback": "Short summary of their form.",
+    "tips": ["Tip 1", "Tip 2", "Tip 3 to improve"]
+  }`;
+
+  try {
+    const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
+      contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
+      config: { responseMimeType: "application/json" }
+    });
+    return cleanJSON(response.text || "{}");
+  } catch (e) {
+    return { error: "Failed to analyze exercise." };
+  }
 };
 
-export const ai = getGenAIClient();
+// Helper function needed for Triage (Strictly needed by some legacy imports)
+export const ai = new GoogleGenAI({ apiKey: getRandomKey() });
