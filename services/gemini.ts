@@ -66,7 +66,7 @@ const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite';
 // 2. TRIAGE CHAT (RESTORED ORIGINAL LOGIC ✅)
 // ==========================================
 
-// ✅ YEH NAYA TRIAGE FUNCTION PASTE KAREIN
+// ✅ FINAL UPDATED TRIAGE FUNCTION (Best of Both Worlds)
 export const runTriageTurn = async (
   history: { role: string; text: string }[],
   currentInput: string,
@@ -75,9 +75,9 @@ export const runTriageTurn = async (
 ) => {
   const model = CHAT_MODEL_NAME;
 
+  // 1. AAPKA ORIGINAL BADHIYA PROMPT (As it is)
   let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
-  CURRENT INTERNAL STATUS (DO NOT REVEAL TO USER):
-  - Current Step: ${step}/3
+  CURRENT STATUS: Step ${step}/3.
   
   GOAL:
   1. Analyze the user's complaint.
@@ -88,20 +88,17 @@ export const runTriageTurn = async (
   - You **MUST** specify the exact type of specialist the user should see (e.g., "Gastroenterologist", "Orthopedist", "Dermatologist", "ENT Specialist").
   - **NEVER** just say "see a doctor". You must identify the category.
   - Start the verdict with "**Verdict:**".
-   - **NEVER** output the text "Step:", "Protocol:", or "Analyze complaint." to the user.
-  - Speak naturally like a caring human doctor.
-  - Keep responses short (under 50 words unless giving a verdict).
-
+  
   MAP RULES (CRITICAL):
-  - You MUST use the 'googleMaps' tool to find **specific real clinics/hospitals**.
+  - Use the 'googleMaps' tool to find **specific real clinics** matching that **Specific Specialist** type nearby.
+  - **Output 3 Distinct Options.**
   - **Strict Output Format:** You must output links exactly like this:
-    * [Clinic Name](https://www.google.com/maps/search/?api=1&query=Clinic+Name+City)
+    * [Clinic Name](http://googleusercontent.com/maps.google.com/search?q=Clinic+Name+City)
   - Do NOT use internal tool links like 'googleMaps/search'. Use full HTTPS links.
-  - Return distinct locations with their actual addresses if possible.
 
   FORMATTING:
   - Use Markdown for bolding (**Verdict**).
-  - Keep response short and clear.
+  - Keep response short.
   `;
 
   if (step >= 2) {
@@ -128,7 +125,7 @@ export const runTriageTurn = async (
     
     let text = response.text || "I couldn't generate a response.";
     
-    // --- MAPS EXTRACTION ---
+    // --- 2. SMART MAP EXTRACTION (UPDATED LOGIC) ---
     const mapChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     let groundingUrls = mapChunks
       .map((c: any) => {
@@ -138,26 +135,47 @@ export const runTriageTurn = async (
       })
       .filter(item => item !== null);
 
-    // Fallback Extraction
     const lines = text.split('\n');
     const cleanLines: string[] = [];
-    const linkRegex = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?google\.com\/maps[^)]+)\)/;
+    
+    // ⚡ NEW REGEX: Yeh ab kisi bhi tarah ka link pakad lega (sirf https nahi)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/;
 
     lines.forEach(line => {
-        const markdownMatch = line.match(linkRegex);
-        if (markdownMatch) {
-            groundingUrls.push({ title: markdownMatch[1].replace(/\*/g, '').trim(), uri: markdownMatch[2], source: "Google Maps" });
+        const match = line.match(linkRegex);
+        if (match) {
+            const title = match[1].replace(/\*/g, '').trim();
+            let url = match[2];
+
+            // 🛠️ AUTO-FIX: Agar AI "googleMaps/search" ya broken link deta hai, toh usse fix karo
+            if (!url.startsWith('http') || url.includes('search?q') || url.includes('googleMaps/')) {
+                // Title (Clinic Name) use karke clean URL banao
+                const query = encodeURIComponent(title + " near me");
+                url = `http://googleusercontent.com/maps.google.com/search?q=${query}`;
+            }
+
+            groundingUrls.push({ title: title, uri: url, source: "Google Maps" });
         } else {
             cleanLines.push(line);
         }
     });
     
-    // Fallback: If no maps found at step 2, force a search link with coordinates
+    // 3. SMART FALLBACK: Agar phir bhi kuch na mile, toh specialist ke naam se search karo
     if (step === 2 && groundingUrls.length === 0) {
-       groundingUrls.push({ title: "Find Doctors Nearby", uri: `http://googleusercontent.com/maps.google.com/maps?q=doctors+near+${userLocation?.lat},${userLocation?.lng}`, source: "Google Maps" });
+        const specialistMatch = text.match(/(Gastroenterologist|Orthopedist|Dermatologist|Cardiologist|Neurologist|Pediatrician|ENT|Dentist|Doctor)/i);
+        const searchTerm = specialistMatch ? specialistMatch[0] : "Specialist Doctor";
+        
+        groundingUrls.push({ 
+            title: `Find ${searchTerm} Nearby`, 
+            uri: `http://googleusercontent.com/maps.google.com/search?q=${encodeURIComponent(searchTerm)}+near+me`, 
+            source: "Google Maps" 
+        });
     }
 
-    return { text: cleanLines.join('\n').trim(), groundingUrls };
+    // Duplicate links hatao
+    const uniqueUrls = groundingUrls.filter((v,i,a)=>a.findIndex(t=>(t.uri === v.uri))===i);
+
+    return { text: cleanLines.join('\n').trim(), groundingUrls: uniqueUrls };
 
   } catch (error) { 
       console.error(error);
