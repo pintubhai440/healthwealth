@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { runTriageTurn, transcribeUserAudio, generateTTS } from '../services/gemini';
 import { MessageSquare, Send, MapPin, User, Stethoscope, Mic, MicOff, Volume2, StopCircle, Loader2, RefreshCcw, Navigation } from 'lucide-react';
 import { ChatMessage, TriageState } from '../types';
+import ReactMarkdown from 'react-markdown';
 
 // Audio Helpers
 function decode(base64: string) {
@@ -266,7 +267,17 @@ export const TriageBot: React.FC = () => {
                         ? 'bg-teal-600 text-white rounded-br-none' 
                         : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
                     }`}>
-                        <div className="text-sm md:text-base whitespace-pre-wrap">{m.text}</div>
+                        <ReactMarkdown
+                          className={`text-sm md:text-base ${m.role === 'user' ? 'text-white' : 'text-slate-800'}`}
+                          components={{
+                            strong: ({node, ...props}) => <span className="font-bold" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc list-inside space-y-1 my-1" {...props} />,
+                            li: ({node, ...props}) => <li className="" {...props} />,
+                            p: ({node, ...props}) => <p className="mb-1 last:mb-0" {...props} />
+                              }}
+                          >
+                          {m.text}
+                          </ReactMarkdown>
                     </div>
                 </div>
             );
