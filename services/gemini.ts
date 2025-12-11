@@ -93,8 +93,10 @@ export const runTriageTurn = async (
   - Keep responses short (under 50 words unless giving a verdict).
 
   MAP RULES (CRITICAL):
-  - Use the 'googleMaps' tool to find **specific real clinics** matching that **Specific Specialist** type nearby.
-  - **DO NOT generate generic search links.**
+  - You MUST use the 'googleMaps' tool to find **specific real clinics/hospitals**.
+  - **Strict Output Format:** You must output links exactly like this:
+    * [Clinic Name](https://www.google.com/maps/search/?api=1&query=Clinic+Name+City)
+  - Do NOT use internal tool links like 'googleMaps/search'. Use full HTTPS links.
   - Return distinct locations with their actual addresses if possible.
 
   FORMATTING:
