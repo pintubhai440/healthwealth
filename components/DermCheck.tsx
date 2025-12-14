@@ -34,7 +34,7 @@ export const DermCheck: React.FC = () => {
       <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 mb-6 flex gap-3">
         <AlertOctagon className="w-6 h-6 text-rose-500 flex-shrink-0" />
         <p className="text-sm text-rose-800">
-          <strong>Disclaimer:</strong> This is an AI tool for educational purposes only. It is NOT a substitute for professional medical advice. Always consult a dermatologist.
+          <strong>Disclaimer:</strong> This is an AI tool Prototype, for professional medical advice. Always consult a dermatologist for accurate health advice.
         </p>
       </div>
 
