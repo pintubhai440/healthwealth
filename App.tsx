@@ -101,7 +101,7 @@ export default function App() {
             <div className="mt-12 bg-indigo-900 text-white p-6 rounded-2xl flex items-center justify-between shadow-xl">
                <div>
                   <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><ShieldPlus className="w-5 h-5"/> Hackathon Prototype</h3>
-                  <p className="text-indigo-200 text-sm">Powered by Google Gemini 2.5 Flash & 3 Pro Preview.</p>
+                  <p className="text-indigo-200 text-sm">Developed by Team AURAlytics.</p>
                </div>
                <div className="hidden md:block opacity-50 text-6xl">🤖</div>
             </div>
