@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound } from 'lucide-react';
+import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail } from 'lucide-react';
 
 interface FlowAuthProps {
   onLogin: (role: string, name: string) => void;
@@ -9,9 +9,14 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   // Step 1: Selection (Business vs Personal)
   // Step 2: Role (Guardian vs Patient)
   // Step 3: Guardian Code Input
+  // Step 4: Business/Doctor Login (NEW ✅)
   const [step, setStep] = useState(1);
-  const [role, setRole] = useState<'patient' | 'guardian'>('patient');
+  const [role, setRole] = useState<'patient' | 'guardian' | 'doctor'>('patient');
   const [code, setCode] = useState('');
+  
+  // Login Form States
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const handleGuardianSubmit = () => {
     if (code.length > 0) {
@@ -19,6 +24,15 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
     } else {
       alert("Please enter a valid connection code.");
     }
+  };
+
+  const handleBusinessLogin = () => {
+      if(email && password) {
+          // Demo Login for Doctor
+          onLogin('doctor', 'Dr. Vikram Singh');
+      } else {
+          alert("Demo: Enter any email/password to login.");
+      }
   };
 
   return (
@@ -33,16 +47,20 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           <div className="space-y-6">
              <h2 className="text-2xl font-bold text-slate-800 text-center">Select Account Type</h2>
              
-             {/* Business (Future Scope) */}
-             <div className="border-2 border-dashed border-slate-200 p-4 rounded-2xl flex items-center gap-4 opacity-60 cursor-not-allowed bg-slate-50">
-                <div className="bg-slate-200 p-3 rounded-xl">
-                    <Building2 className="w-6 h-6 text-slate-400" />
+             {/* ✅ Business Button (AB KAAM KAREGA) */}
+             <button 
+                onClick={() => setStep(4)}
+                className="w-full border-2 border-slate-100 p-4 rounded-2xl flex items-center gap-4 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm group"
+             >
+                <div className="bg-slate-100 p-3 rounded-xl group-hover:bg-slate-200 transition-colors">
+                    <Building2 className="w-6 h-6 text-slate-500" />
                 </div>
-                <div>
-                    <h3 className="font-bold text-slate-500">Business / Hospital</h3>
-                    <p className="text-xs text-slate-400 font-medium bg-slate-200 inline-block px-2 py-0.5 rounded mt-1">Future Scope</p>
+                <div className="text-left">
+                    <h3 className="font-bold text-slate-800 text-lg">Business / Hospital</h3>
+                    <p className="text-xs text-slate-500 font-medium">Doctors & Clinics Login</p>
                 </div>
-             </div>
+                <ArrowRight className="w-5 h-5 text-slate-300 ml-auto group-hover:text-slate-500" />
+             </button>
 
              {/* Customer (End User) */}
              <button 
@@ -102,7 +120,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     <KeyRound className="w-8 h-8 text-teal-700" />
                  </div>
                  <h2 className="text-2xl font-bold text-slate-800">Enter Access Code</h2>
-                 <p className="text-slate-500 text-sm mt-2">Enter the code provided by the patient to monitor their health.</p>
+                 <p className="text-slate-500 text-sm mt-2">Enter the code provided by the patient.</p>
              </div>
 
              <div className="space-y-4">
@@ -116,11 +134,6 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                       onChange={(e) => setCode(e.target.value)}
                     />
                 </div>
-                
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-xs text-blue-700">
-                    ℹ️ <strong>Instructions:</strong> This code allows you to view the patient's medicine adherence and SOS alerts.
-                </div>
-
                 <button 
                   onClick={handleGuardianSubmit}
                   className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-teal-200 transition-all"
@@ -129,6 +142,55 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                 </button>
              </div>
           </div>
+        )}
+
+        {/* --- STEP 4: BUSINESS LOGIN (VIDEO WALA FORM ✅) --- */}
+        {step === 4 && (
+            <div className="space-y-6 animate-in slide-in-from-right">
+                <button onClick={() => setStep(1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
+                
+                <div className="text-center mb-6">
+                    <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+                        <Stethoscope className="w-8 h-8 text-white" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-800">Welcome Back</h2>
+                    <p className="text-slate-500 text-sm mt-1">Sign in to MediGuard AI</p>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center focus-within:ring-2 ring-blue-500">
+                        <Mail className="w-5 h-5 text-slate-400 mr-3" />
+                        <input 
+                            type="email" 
+                            placeholder="doctor@hospital.com"
+                            className="bg-transparent outline-none w-full text-slate-800"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center focus-within:ring-2 ring-blue-500">
+                        <Lock className="w-5 h-5 text-slate-400 mr-3" />
+                        <input 
+                            type="password" 
+                            placeholder="••••••••"
+                            className="bg-transparent outline-none w-full text-slate-800"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                    </div>
+                    
+                    <button 
+                        onClick={handleBusinessLogin}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
+                    >
+                        Sign In <ArrowRight className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="text-center mt-4">
+                     <p className="text-xs text-slate-400">Demo: Use any email/password.</p>
+                </div>
+            </div>
         )}
 
       </div>
