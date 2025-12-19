@@ -4,18 +4,18 @@ import { TriageBot } from './components/TriageBot';
 import { MediScanner } from './components/MediScanner';
 import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
-import { FlowAuth } from './components/FlowAuth'; // ✅ Naya Auth Import
+import { FlowAuth } from './components/FlowAuth';
+import { DoctorDashboard } from './components/DoctorDashboard'; // ✅ Naya Doctor Component
 import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus, LogOut, Siren } from 'lucide-react';
 
 export default function App() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState<string>('patient');
+  const [userRole, setUserRole] = useState<string>('patient'); // 'patient' ya 'doctor'
   const [userName, setUserName] = useState<string>('');
-
   const [view, setView] = useState<FeatureView>(FeatureView.HOME);
 
-  // Login Handler (FlowAuth se connect hai)
+  // Login Handler
   const handleLogin = (role: string, name: string) => {
     setUserRole(role);
     setUserName(name);
@@ -29,17 +29,54 @@ export default function App() {
     setView(FeatureView.HOME);
   };
 
-  // ✅ SOS Alert Handler (Drawing Feature)
+  // SOS Alert Handler
   const handleSOS = () => {
     alert("🆘 SOS ALERT SENT! \n\nEmergency contacts and nearby hospitals have been notified with your live location.");
   };
 
-  // ✅ MAIN LOGIC: Agar login nahi hai, to Drawing wala Flow dikhao
+  // 1. Agar Login nahi hai, toh Auth Screen dikhao
   if (!isAuthenticated) {
     return <FlowAuth onLogin={handleLogin} />;
   }
 
-  // --- APP DASHBOARD (Features same rahenge) ---
+  // 2. ✅ AGAR DOCTOR HAI: Toh Naya Dashboard dikhao (Video Wala Feature)
+  if (userRole === 'doctor') {
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+        <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+          <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+             <div className="flex items-center gap-2">
+                <div className="bg-blue-600 p-2 rounded-lg">
+                   <Stethoscope className="w-6 h-6 text-white" />
+                </div>
+                <h1 className="text-xl font-bold text-slate-800">MediGuard <span className="text-blue-600">Pro</span></h1>
+             </div>
+             
+             <div className="flex items-center gap-3">
+                 <div className="text-right hidden sm:block">
+                    <p className="text-xs text-slate-400 font-bold uppercase">Logged in as</p>
+                    <p className="text-sm font-bold text-slate-800">{userName}</p>
+                 </div>
+                 <button 
+                    onClick={handleLogout} 
+                    className="p-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 rounded-full transition-all"
+                    title="Sign Out"
+                 >
+                    <LogOut className="w-5 h-5" />
+                 </button>
+             </div>
+          </div>
+        </nav>
+
+        {/* Doctor Dashboard Component */}
+        <main className="max-w-3xl mx-auto px-4 py-8">
+           <DoctorDashboard />
+        </main>
+      </div>
+    );
+  }
+
+  // 3. ✅ AGAR PATIENT HAI: Toh Purana App dikhao (Aapke Saare Features Safe Hain)
   const features = [
     {
       id: FeatureView.TRIAGE,
@@ -73,7 +110,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* Navbar */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <div 
@@ -90,7 +126,6 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-3">
-             {/* ✅ SOS BUTTON (Drawing Request) */}
              <button 
                 onClick={handleSOS}
                 className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2 animate-pulse shadow-lg shadow-red-200"
@@ -118,9 +153,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-3xl mx-auto px-4 py-8">
-        
         {view === FeatureView.HOME && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-3 mb-10">
@@ -129,7 +162,7 @@ export default function App() {
               </span>
               
               <h2 className="text-3xl font-bold text-slate-800">
-                Hello, {userRole === 'guardian' ? 'Guardian' : 'Patient'}
+                Hello, {userName || 'Patient'}
               </h2>
               <p className="text-slate-500 max-w-lg mx-auto">
                 {userRole === 'guardian' 
@@ -157,7 +190,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Hackathon Badge */}
             <div className="mt-12 bg-slate-800 text-white p-6 rounded-2xl flex items-center justify-between shadow-xl">
                <div>
                   <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><ShieldPlus className="w-5 h-5"/> Team AURAlytics</h3>
@@ -167,14 +199,12 @@ export default function App() {
           </div>
         )}
 
-        {/* Feature Views (UNCHANGED - SAFE) */}
         <div className="animate-in zoom-in-95 duration-300">
             {view === FeatureView.TRIAGE && <TriageBot />}
             {view === FeatureView.MEDISCAN && <MediScanner />}
             {view === FeatureView.DERMCHECK && <DermCheck />}
             {view === FeatureView.RECOVERY && <RecoveryCoach />}
         </div>
-
       </main>
     </div>
   );
