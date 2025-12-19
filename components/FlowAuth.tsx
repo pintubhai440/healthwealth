@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail } from 'lucide-react';
+import { supabase } from '../services/supabase'; // ✅ Database connection joda
+import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail, Loader2, LogIn } from 'lucide-react';
 
 interface FlowAuthProps {
   onLogin: (role: string, name: string) => void;
@@ -9,7 +10,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   // Step 1: Selection (Business vs Personal)
   // Step 2: Role (Guardian vs Patient)
   // Step 3: Guardian Code Input
-  // Step 4: Business/Doctor Login (NEW ✅)
+  // Step 4: Business/Doctor Login (AB YEH REAL DATABASE SE CHALEGA ✅)
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<'patient' | 'guardian' | 'doctor'>('patient');
   const [code, setCode] = useState('');
@@ -17,6 +18,8 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   // Login Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false); // ✅ Loading animation ke liye
+  const [isSignUp, setIsSignUp] = useState(false); // ✅ Login/Signup switch ke liye
 
   const handleGuardianSubmit = () => {
     if (code.length > 0) {
@@ -26,12 +29,42 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
     }
   };
 
-  const handleBusinessLogin = () => {
-      if(email && password) {
-          // Demo Login for Doctor
-          onLogin('doctor', 'Dr. Vikram Singh');
-      } else {
-          alert("Demo: Enter any email/password to login.");
+  // ✅ NAYA: Real Database Login Function
+  const handleAuth = async () => {
+      if (!email || !password) {
+          alert("Please enter email and password");
+          return;
+      }
+
+      setLoading(true);
+      try {
+          if (isSignUp) {
+              // --- SIGN UP LOGIC (Naya Account) ---
+              const { error } = await supabase.auth.signUp({
+                  email: email,
+                  password: password,
+              });
+              if (error) throw error;
+              alert("Account Created! You can now Log In.");
+              setIsSignUp(false); // Wapas login par bhejo
+          } else {
+              // --- LOGIN LOGIC (Purana Account) ---
+              const { data, error } = await supabase.auth.signInWithPassword({
+                  email: email,
+                  password: password,
+              });
+              
+              if (error) throw error;
+              
+              // Login Success!
+              // Hum role ko 'doctor' maan rahe hain kyunki ye step 4 hai, 
+              // par aap chaho toh 'patient' bhi bhej sakte ho.
+              onLogin('doctor', data.user.email || 'Dr. User'); 
+          }
+      } catch (error: any) {
+          alert(error.message || "Login failed. Check details.");
+      } finally {
+          setLoading(false);
       }
   };
 
@@ -42,12 +75,12 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
         {/* Background Design Element */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -z-0 opacity-50"></div>
 
-        {/* --- STEP 1: BUSINESS vs PERSONAL --- */}
+        {/* --- STEP 1: BUSINESS vs PERSONAL (SAME AS BEFORE) --- */}
         {step === 1 && (
           <div className="space-y-6">
              <h2 className="text-2xl font-bold text-slate-800 text-center">Select Account Type</h2>
              
-             {/* ✅ Business Button (AB KAAM KAREGA) */}
+             {/* Business Button */}
              <button 
                 onClick={() => setStep(4)}
                 className="w-full border-2 border-slate-100 p-4 rounded-2xl flex items-center gap-4 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm group"
@@ -79,7 +112,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 2: PATIENT vs GUARDIAN --- */}
+        {/* --- STEP 2: PATIENT vs GUARDIAN (SAME AS BEFORE) --- */}
         {step === 2 && (
           <div className="space-y-6">
              <button onClick={() => setStep(1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
@@ -111,7 +144,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 3: GUARDIAN CODE INPUT --- */}
+        {/* --- STEP 3: GUARDIAN CODE INPUT (SAME AS BEFORE) --- */}
         {step === 3 && (
           <div className="space-y-6">
              <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
@@ -144,7 +177,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 4: BUSINESS LOGIN (VIDEO WALA FORM ✅) --- */}
+        {/* --- STEP 4: BUSINESS LOGIN (UPDATED WITH SUPABASE ✅) --- */}
         {step === 4 && (
             <div className="space-y-6 animate-in slide-in-from-right">
                 <button onClick={() => setStep(1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
@@ -153,8 +186,9 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
                         <Stethoscope className="w-8 h-8 text-white" />
                     </div>
-                    <h2 className="text-2xl font-bold text-slate-800">Welcome Back</h2>
-                    <p className="text-slate-500 text-sm mt-1">Sign in to MediGuard AI</p>
+                    {/* ✅ Header Text Changes Dynamically */}
+                    <h2 className="text-2xl font-bold text-slate-800">{isSignUp ? "Create Account" : "Welcome Back"}</h2>
+                    <p className="text-slate-500 text-sm mt-1">Secure Database Login</p>
                 </div>
 
                 <div className="space-y-4">
@@ -179,16 +213,27 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                         />
                     </div>
                     
+                    {/* ✅ REAL Login Button */}
                     <button 
-                        onClick={handleBusinessLogin}
+                        onClick={handleAuth}
+                        disabled={loading}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
                     >
-                        Sign In <ArrowRight className="w-5 h-5" />
+                        {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? "Sign Up" : <><LogIn className="w-4 h-4"/> Sign In</>)}
                     </button>
                 </div>
 
-                <div className="text-center mt-4">
-                     <p className="text-xs text-slate-400">Demo: Use any email/password.</p>
+                {/* ✅ Login/Signup Toggle */}
+                <div className="text-center mt-4 border-t border-slate-100 pt-4">
+                     <p className="text-sm text-slate-500">
+                        {isSignUp ? "Already have an account?" : "New to MediGuard?"}
+                        <button 
+                          onClick={() => setIsSignUp(!isSignUp)}
+                          className="font-bold text-blue-600 ml-2 hover:underline"
+                        >
+                          {isSignUp ? "Log In" : "Create Account"}
+                        </button>
+                     </p>
                 </div>
             </div>
         )}
