@@ -1,3 +1,12 @@
+export enum FeatureView {
+  HOME = 'HOME',
+  TRIAGE = 'TRIAGE',
+  MEDISCAN = 'MEDISCAN',
+  DERMCHECK = 'DERMCHECK',
+  RECOVERY = 'RECOVERY',
+  GUARDIAN = 'GUARDIAN' // ✅ Ye line add karein (5th Box ke liye)
+}
+
 export interface PatientProfile {
   full_name: string;
   title?: string;
