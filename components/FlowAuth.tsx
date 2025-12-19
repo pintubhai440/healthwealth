@@ -20,7 +20,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   // ✅ NAYA: Patient Profile Form State
   const [profile, setProfile] = useState({
     full_name: '',
-    title: '',
+    Last_name: '',
     age: '',
     gender: 'Male',
     height: '',
