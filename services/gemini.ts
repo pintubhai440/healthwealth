@@ -232,7 +232,7 @@ export const generateTTS = async (text: string) => {
 export const analyzeImage = async (
   base64Data: string, 
   mimeType: string, 
-  type: 'MEDICINE' | 'DERM' | 'REPORT', // 👈 'REPORT' add kiya
+  type: 'MEDICINE' | 'DERM' | 'REPORT',
   profile?: MiniProfile 
 ) => {
   let prompt = "";
@@ -249,25 +249,47 @@ export const analyzeImage = async (
      Return JSON: {condition_name, verdict, explanation, recommended_action}.`;
 
   } else if (type === 'REPORT') {
-     // ✅ NAYA FEATURE: LAB REPORT ANALYZER
-     prompt = `You are an expert Doctor AI. Analyze this medical lab report (Blood test, Thyroid, etc.).
+     // ✅ FIXED: UNIVERSAL HOLISTIC LOGIC (For All Report Types)
+     prompt = `You are an expert Pathologist & General Physician AI. Analyze this medical lab report (CBC, Lipid, Thyroid, LFT, KFT, Urine, etc.).
      Patient Profile: ${profile?.age || 'Unknown'} years old, ${profile?.gender || 'Unknown'}.
 
+     CRITICAL HOLISTIC LOGIC RULES (Follow Strictly):
+     1. **Connect the Dots:** Do NOT analyze parameters in isolation. Look at the relationship between values.
+     2. **Conflict Resolution & Examples:**
+        - **Thyroid:** If T3/T4 High AND TSH High -> Mark as "Complex/Pituitary Issue" (Don't say thyroid is both fast and slow).
+        - **Lipid Profile:** If Total Cholesterol is High BUT HDL (Good Cholesterol) is also High -> This is often OK. Do not panic. Check LDL/HDL ratio instead.
+        - **CBC (Anemia):** If Hemoglobin is Low, look at MCV. 
+          * MCV Low = Iron Deficiency (Microcytic).
+          * MCV High = B12/Folate Deficiency (Macrocytic). -> Give specific advice based on this.
+        - **Liver (LFT):** If SGOT/SGPT are mildly elevated but Bilirubin is Normal -> Likely Fatty Liver or Alcohol, not Liver Failure.
+        - **Kidney (KFT):** If Creatinine is high, check Urea/BUN. Both high = Kidney stress. Dehydration can also spike these slightly.
+     3. **Dummy Data Rule:** If report says "DUMMY", "SAMPLE", or "FORMAT", explicitly mention: "This appears to be a sample report, but here is the analysis of the numbers provided."
+
      Task:
-     1. Extract key abnormal values.
-     2. Explain what they mean in SIMPLE terms for a layman.
-     3. Give lifestyle/diet tips based on the report.
+     1. Identify the Test Type (e.g., Complete Blood Count, Lipid Profile, etc.).
+     2. Extract ONLY abnormal or key values.
+     3. Provide a 'Medical Interpretation' that explains WHY it is high/low based on the logic above.
 
      RETURN JSON format:
      {
-       "report_type": "e.g., CBC Blood Test / Thyroid Profile",
-       "summary": "A simple 2-line summary of health status.",
+       "report_type": "e.g., Complete Blood Count (CBC)",
+       "summary": "A 2-line summary. Example: 'Red blood cells are low indicating Iron Deficiency Anemia, not general weakness.'",
        "findings": [
-          { "parameter": "Hemoglobin", "value": "10.5", "status": "Low", "meaning": "Causes weakness/anemia." },
-          { "parameter": "TSH", "value": "5.5", "status": "High", "meaning": "Indicates Hypothyroidism." }
+          { 
+            "parameter": "Hemoglobin", 
+            "value": "9.5", 
+            "status": "Low", 
+            "meaning": "Indicates Anemia." 
+          },
+          { 
+            "parameter": "MCV", 
+            "value": "70", 
+            "status": "Low", 
+            "meaning": "Suggests Iron Deficiency type." 
+          }
        ],
-       "health_tips": ["Eat iron-rich food", "Sleep 8 hours", "Consult doctor for medication"],
-       "overall_status": "Normal / Attention Needed / Critical"
+       "health_tips": ["Eat Iron-rich foods like Spinach/Red Meat", "Vitamin C helps absorption", "Avoid tea/coffee with meals"],
+       "overall_status": "Attention Needed / Normal / Critical"
      }`;
   }
 
