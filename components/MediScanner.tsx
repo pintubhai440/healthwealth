@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Pill, CheckCircle, AlertTriangle, Loader2, Video, Mail, User, Heart, Send, ArrowRight } from 'lucide-react';
+import { Camera, Pill, CheckCircle, AlertTriangle, Loader2, Video, Mail, User, Heart, Send, ArrowRight, FileText, ClipboardList, Activity } from 'lucide-react';
 import { analyzeImage, analyzeMedicineVideo } from '../services/gemini';
-import { supabase } from '../services/supabase'; // ✅ Supabase Import
+import { supabase } from '../services/supabase'; 
 import emailjs from '@emailjs/browser';
 
 // ==========================================
@@ -13,22 +13,23 @@ const EMAIL_CONFIG = {
   PUBLIC_KEY: "US_ygwyKqgstVBeVe"
 };
 
-// ✅ Naya Interface taki Dashboard se control kar sakein
+// ✅ Interface update kiya: 'REPORT' mode add kiya
 interface MediScannerProps {
-  defaultMode?: 'ID' | 'VERIFY';
+  defaultMode?: 'ID' | 'VERIFY' | 'REPORT';
   hideTabs?: boolean;
 }
 
 export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hideTabs = false }) => {
-  const [mode, setMode] = useState<'ID' | 'VERIFY'>(defaultMode);
+  // ✅ Mode state mein 'REPORT' add kiya
+  const [mode, setMode] = useState<'ID' | 'VERIFY' | 'REPORT'>(defaultMode);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // ✅ User Profile State (Allergy Check ke liye)
+  // ✅ User Profile State (Allergy Check aur Report Analysis ke liye)
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  // GUARDIAN FORM STATE
+  // GUARDIAN FORM STATE (Purana Feature - Safe hai)
   const [guardianForm, setGuardianForm] = useState({
     patientName: '',
     relation: 'Father',
@@ -37,7 +38,7 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
   const [isFormSubmitted, setIsFormSubmitted] = useState(false);
   const [emailStatus, setEmailStatus] = useState<string | null>(null);
 
-  // ✅ Profile Fetch Effect (Allergy protection ke liye zaroori hai)
+  // ✅ Profile Fetch Effect
   useEffect(() => {
     const loadProfile = async () => {
        const { data: { user } } = await supabase.auth.getUser();
@@ -64,11 +65,16 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
 
       try {
         if (mode === 'ID') {
-          // ✅ Pass userProfile to analyzeImage for Allergy Check
+          // Medicine ID Logic (Purana)
           const res = await analyzeImage(base64String, mimeType, 'MEDICINE', userProfile);
           setResult(res);
+        } else if (mode === 'REPORT') {
+          // ✅ NAYA LOGIC: Report Analysis
+          // Note: Ensure services/gemini.ts is updated to handle 'REPORT' type
+          const res = await analyzeImage(base64String, mimeType, 'REPORT', userProfile);
+          setResult(res);
         } else {
-          // VIDEO VERIFICATION LOGIC
+          // Video Verification Logic (Purana)
           const res = await analyzeMedicineVideo(base64String, mimeType);
           setResult(res);
           handleEmailAlert(res, guardianForm);
@@ -119,29 +125,34 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
 
   return (
     <div className="space-y-6">
-      {/* ✅ Tabs: Agar hideTabs true hai (Dashboard se) toh Tabs mat dikhao */}
+      {/* ✅ Tabs: Ab 3 Tabs hain (Reports Add kiya) */}
       {!hideTabs && (
-        <div className="flex p-1 bg-slate-200 rounded-xl">
+        <div className="flex p-1 bg-slate-200 rounded-xl overflow-x-auto">
           <button
             onClick={() => { setMode('ID'); setResult(null); }}
-            className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'ID' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
+            className={`flex-1 py-2 px-2 rounded-lg font-medium text-xs md:text-sm whitespace-nowrap transition-all flex items-center justify-center gap-2 ${mode === 'ID' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
           >
-            <div className="flex items-center justify-center gap-2">
-              <Pill className="w-4 h-4" /> Identify Medicine
-            </div>
+             <Pill className="w-4 h-4" /> Identify
           </button>
+          
           <button
             onClick={() => { setMode('VERIFY'); setResult(null); }}
-            className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'VERIFY' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
+            className={`flex-1 py-2 px-2 rounded-lg font-medium text-xs md:text-sm whitespace-nowrap transition-all flex items-center justify-center gap-2 ${mode === 'VERIFY' ? 'bg-white shadow text-blue-700' : 'text-slate-500'}`}
           >
-            <div className="flex items-center justify-center gap-2">
-              <Video className="w-4 h-4" /> Guardian Verify
-            </div>
+             <Video className="w-4 h-4" /> Guardian
+          </button>
+
+          {/* 🔥 NEW TAB: LAB REPORT */}
+          <button
+            onClick={() => { setMode('REPORT'); setResult(null); }}
+            className={`flex-1 py-2 px-2 rounded-lg font-medium text-xs md:text-sm whitespace-nowrap transition-all flex items-center justify-center gap-2 ${mode === 'REPORT' ? 'bg-white shadow text-purple-700' : 'text-slate-500'}`}
+          >
+             <FileText className="w-4 h-4" /> Reports
           </button>
         </div>
       )}
 
-      {/* GUARDIAN FORM */}
+      {/* GUARDIAN FORM (Sirf Verify Mode me dikhega - Purana Feature) */}
       {mode === 'VERIFY' && !isFormSubmitted && (
           <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-in fade-in">
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -205,11 +216,13 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
           </div>
       )}
 
-      {/* Upload Area */}
-      {((mode === 'ID') || (mode === 'VERIFY' && isFormSubmitted)) && (
+      {/* Upload Area (Updated for 3 Modes) */}
+      {((mode === 'ID' || mode === 'REPORT') || (mode === 'VERIFY' && isFormSubmitted)) && (
           <div 
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-teal-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors relative overflow-hidden group"
+            className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-opacity-50 transition-colors relative overflow-hidden group 
+              ${mode === 'REPORT' ? 'border-purple-200 bg-purple-50 hover:bg-purple-100' : 'border-teal-200 bg-teal-50 hover:bg-teal-100'}
+            `}
           >
             {mode === 'VERIFY' && (
                 <div className="absolute top-2 right-2 bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
@@ -221,18 +234,27 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
               type="file" 
               ref={fileInputRef} 
               className="hidden" 
-              accept={mode === 'ID' ? "image/*" : "video/*"}
+              accept={mode === 'VERIFY' ? "video/*" : "image/*"}
               capture={mode === 'VERIFY' ? "user" : undefined} 
               onChange={handleFileChange}
             />
+            
             <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
-              {mode === 'ID' ? <Camera className="w-8 h-8 text-teal-600" /> : <Video className="w-8 h-8 text-blue-600" />}
+              {mode === 'ID' && <Camera className="w-8 h-8 text-teal-600" />}
+              {mode === 'VERIFY' && <Video className="w-8 h-8 text-blue-600" />}
+              {/* ✅ Naya Icon Reports ke liye */}
+              {mode === 'REPORT' && <ClipboardList className="w-8 h-8 text-purple-600" />}
             </div>
+            
             <p className="text-teal-900 font-medium text-center">
-              {mode === 'ID' ? "Tap to snap medicine photo" : `Record ${guardianForm.patientName} taking medicine`}
+              {mode === 'ID' ? "Tap to snap medicine photo" : 
+               mode === 'VERIFY' ? `Record ${guardianForm.patientName} taking medicine` : 
+               "Upload Lab Report (Photo)"}
             </p>
             <p className="text-teal-600 text-sm mt-1">
-              {mode === 'ID' ? "We'll tell you what it is." : "Max 5 seconds video."}
+              {mode === 'ID' ? "We'll tell you what it is." : 
+               mode === 'VERIFY' ? "Max 5 seconds video." : 
+               "Blood Test, Thyroid, CBC, etc."}
             </p>
             
             {mode === 'VERIFY' && (
@@ -251,25 +273,90 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
         <div className="flex flex-col items-center justify-center py-8 text-teal-600">
           <Loader2 className="w-10 h-10 animate-spin mb-3" />
           <p className="animate-pulse font-medium">
-             {mode === 'ID' ? "Analyzing Pill..." : "Guardian AI is Verifying..."}
+             {mode === 'ID' ? "Analyzing Pill..." : 
+              mode === 'VERIFY' ? "Guardian AI is Verifying..." : 
+              "Reading Lab Report..."}
           </p>
         </div>
       )}
 
       {result && !loading && (
         <div className="bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className={`p-4 ${result.error ? 'bg-red-500' : (mode === 'VERIFY' && !result.success) ? 'bg-red-600' : 'bg-teal-600'} text-white`}>
+          <div className={`p-4 text-white font-bold flex items-center gap-2
+            ${result.error ? 'bg-red-500' : 
+              mode === 'REPORT' ? 'bg-purple-600' : 
+              (mode === 'VERIFY' && !result.success) ? 'bg-red-600' : 'bg-teal-600'}`}>
+            
             <h3 className="font-bold flex items-center gap-2">
               {result.error || (mode === 'VERIFY' && !result.success) ? <AlertTriangle /> : <CheckCircle />}
-              {mode === 'ID' ? "Medicine Identified" : "Guardian Status Report"}
+              {mode === 'ID' ? "Medicine Identified" : 
+               mode === 'VERIFY' ? "Guardian Status Report" : 
+               "Report Analysis"}
             </h3>
           </div>
           
           <div className="p-5 space-y-4">
             {result.error ? (
               <p className="text-red-600">{result.error}</p>
+            ) : mode === 'REPORT' ? (
+              // ✅ NAYA FEATURE: REPORT DISPLAY UI
+              <div className="space-y-4">
+                 <div className="flex justify-between items-start">
+                    <div>
+                       <h3 className="font-bold text-lg text-slate-800">{result.report_type || "Medical Report"}</h3>
+                       <p className="text-sm text-slate-500">{result.summary}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold 
+                      ${result.overall_status?.includes('Normal') ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {result.overall_status}
+                    </span>
+                 </div>
+
+                 {/* Findings Table */}
+                 <div className="border rounded-xl overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                       <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                          <tr>
+                             <th className="p-3">Parameter</th>
+                             <th className="p-3">Value</th>
+                             <th className="p-3">Meaning</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                          {result.findings?.map((item: any, idx: number) => (
+                             <tr key={idx} className={item.status !== 'Normal' ? 'bg-amber-50/50' : ''}>
+                                <td className="p-3 font-medium text-slate-800">{item.parameter}</td>
+                                <td className="p-3">
+                                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                      item.status === 'High' ? 'bg-red-100 text-red-700' : 
+                                      item.status === 'Low' ? 'bg-blue-100 text-blue-700' : 
+                                      'bg-green-100 text-green-700'
+                                   }`}>
+                                      {item.value} ({item.status})
+                                   </span>
+                                </td>
+                                <td className="p-3 text-slate-500 text-xs">{item.meaning}</td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+
+                 {/* Health Tips */}
+                 <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                    <h4 className="font-bold text-purple-800 text-sm mb-2 flex items-center gap-2">
+                       <Activity className="w-4 h-4" /> AI Recommendations
+                    </h4>
+                    <ul className="list-disc list-inside text-sm text-purple-900 space-y-1">
+                       {result.health_tips?.map((tip: string, i: number) => (
+                          <li key={i}>{tip}</li>
+                       ))}
+                    </ul>
+                 </div>
+              </div>
+
             ) : mode === 'ID' ? (
-               // ID MODE RESULT
+               // ID MODE RESULT (PURANA)
                <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
                   <p className="text-xl font-bold text-slate-800 mb-2">{result.name || "Unknown"}</p>
@@ -282,7 +369,7 @@ export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hi
                   )}
                </div>
             ) : (
-              // GUARDIAN VERIFY RESULT
+              // GUARDIAN VERIFY RESULT (PURANA)
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Action:</span>
