@@ -1,26 +1,32 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Pill, CheckCircle, AlertTriangle, Loader2, Video, Mail, User, Heart, Send, ArrowRight } from 'lucide-react';
 import { analyzeImage, analyzeMedicineVideo } from '../services/gemini';
+import { supabase } from '../services/supabase'; // ✅ Supabase Import
 import emailjs from '@emailjs/browser';
 
 // ==========================================
-// CONFIG: EmailJS Setup (Free Account)
+// CONFIG: EmailJS Setup
 // ==========================================
-// 1. Go to https://www.emailjs.com/ -> Sign Up
-// 2. Add Service (Gmail) -> Copy Service ID
-// 3. Create Template -> Copy Template ID
-// 4. Account -> Copy Public Key
 const EMAIL_CONFIG = {
-  SERVICE_ID: "service_bf8gm8x",     // Yahan Apna Service ID daalo
-  TEMPLATE_ID: "template_gdclmll",   // Yahan Apna Template ID daalo
-  PUBLIC_KEY: "US_ygwyKqgstVBeVe"      // Yahan Apni Public Key daalo
+  SERVICE_ID: "service_bf8gm8x",
+  TEMPLATE_ID: "template_gdclmll",
+  PUBLIC_KEY: "US_ygwyKqgstVBeVe"
 };
 
-export const MediScanner: React.FC = () => {
-  const [mode, setMode] = useState<'ID' | 'VERIFY'>('ID');
+// ✅ Naya Interface taki Dashboard se control kar sakein
+interface MediScannerProps {
+  defaultMode?: 'ID' | 'VERIFY';
+  hideTabs?: boolean;
+}
+
+export const MediScanner: React.FC<MediScannerProps> = ({ defaultMode = 'ID', hideTabs = false }) => {
+  const [mode, setMode] = useState<'ID' | 'VERIFY'>(defaultMode);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // ✅ User Profile State (Allergy Check ke liye)
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // GUARDIAN FORM STATE
   const [guardianForm, setGuardianForm] = useState({
@@ -30,6 +36,18 @@ export const MediScanner: React.FC = () => {
   });
   const [isFormSubmitted, setIsFormSubmitted] = useState(false);
   const [emailStatus, setEmailStatus] = useState<string | null>(null);
+
+  // ✅ Profile Fetch Effect (Allergy protection ke liye zaroori hai)
+  useEffect(() => {
+    const loadProfile = async () => {
+       const { data: { user } } = await supabase.auth.getUser();
+       if(user) {
+         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+         if(data) setUserProfile(data);
+       }
+    };
+    loadProfile();
+  }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,15 +64,13 @@ export const MediScanner: React.FC = () => {
 
       try {
         if (mode === 'ID') {
-          // Identify Medicine Logic (TOUCHED NOTHING HERE)
-          const res = await analyzeImage(base64String, mimeType, 'MEDICINE');
+          // ✅ Pass userProfile to analyzeImage for Allergy Check
+          const res = await analyzeImage(base64String, mimeType, 'MEDICINE', userProfile);
           setResult(res);
         } else {
           // VIDEO VERIFICATION LOGIC
           const res = await analyzeMedicineVideo(base64String, mimeType);
           setResult(res);
-          
-          // SEND REAL EMAIL ALERT
           handleEmailAlert(res, guardianForm);
         }
       } catch (err) {
@@ -67,9 +83,7 @@ export const MediScanner: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  // 🚀 REAL EMAIL SENDER LOGIC
   const handleEmailAlert = async (res: any, details: any) => {
-      // Check if config is placeholder
       if (EMAIL_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY") {
           setEmailStatus("setup_needed");
           return;
@@ -97,7 +111,6 @@ export const MediScanner: React.FC = () => {
             EMAIL_CONFIG.PUBLIC_KEY
         );
         setEmailStatus("sent");
-        console.log("Real Email Sent Successfully!");
       } catch (error) {
         console.error("Email Failed:", error);
         setEmailStatus("failed");
@@ -106,34 +119,35 @@ export const MediScanner: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Tabs */}
-      <div className="flex p-1 bg-slate-200 rounded-xl">
-        <button
-          onClick={() => { setMode('ID'); setResult(null); }}
-          className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'ID' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <Pill className="w-4 h-4" /> Identify Medicine
-          </div>
-        </button>
-        <button
-          onClick={() => { setMode('VERIFY'); setResult(null); }}
-          className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'VERIFY' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <Video className="w-4 h-4" /> Guardian Verify
-          </div>
-        </button>
-      </div>
+      {/* ✅ Tabs: Agar hideTabs true hai (Dashboard se) toh Tabs mat dikhao */}
+      {!hideTabs && (
+        <div className="flex p-1 bg-slate-200 rounded-xl">
+          <button
+            onClick={() => { setMode('ID'); setResult(null); }}
+            className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'ID' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Pill className="w-4 h-4" /> Identify Medicine
+            </div>
+          </button>
+          <button
+            onClick={() => { setMode('VERIFY'); setResult(null); }}
+            className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${mode === 'VERIFY' ? 'bg-white shadow text-teal-700' : 'text-slate-500'}`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Video className="w-4 h-4" /> Guardian Verify
+            </div>
+          </button>
+        </div>
+      )}
 
-      {/* GUARDIAN FORM (Sirf Verify Mode me dikhega) */}
+      {/* GUARDIAN FORM */}
       {mode === 'VERIFY' && !isFormSubmitted && (
           <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-in fade-in">
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                   <Heart className="w-5 h-5 text-red-500" /> Patient Setup
               </h3>
               <div className="space-y-4">
-                  {/* Name Input */}
                   <div>
                       <label className="text-xs font-bold text-slate-500 uppercase">Patient Name</label>
                       <div className="flex items-center bg-slate-50 rounded-lg px-3 border focus-within:ring-2 ring-blue-200">
@@ -148,7 +162,6 @@ export const MediScanner: React.FC = () => {
                       </div>
                   </div>
                   
-                  {/* Relation Input */}
                    <div>
                       <label className="text-xs font-bold text-slate-500 uppercase">Relation</label>
                       <select 
@@ -164,7 +177,6 @@ export const MediScanner: React.FC = () => {
                       </select>
                   </div>
 
-                  {/* Email Input */}
                   <div>
                       <label className="text-xs font-bold text-slate-500 uppercase">Guardian Email</label>
                       <div className="flex items-center bg-slate-50 rounded-lg px-3 border focus-within:ring-2 ring-blue-200">
@@ -193,7 +205,7 @@ export const MediScanner: React.FC = () => {
           </div>
       )}
 
-      {/* Upload Area (ID Mode ya Form submit hone ke baad) */}
+      {/* Upload Area */}
       {((mode === 'ID') || (mode === 'VERIFY' && isFormSubmitted)) && (
           <div 
             onClick={() => fileInputRef.current?.click()}
@@ -257,7 +269,7 @@ export const MediScanner: React.FC = () => {
             {result.error ? (
               <p className="text-red-600">{result.error}</p>
             ) : mode === 'ID' ? (
-               // ID MODE RESULT (TOUCHED NOTHING)
+               // ID MODE RESULT
                <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
                   <p className="text-xl font-bold text-slate-800 mb-2">{result.name || "Unknown"}</p>
@@ -270,7 +282,7 @@ export const MediScanner: React.FC = () => {
                   )}
                </div>
             ) : (
-              // GUARDIAN VERIFY RESULT (EMAIL ONLY)
+              // GUARDIAN VERIFY RESULT
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Action:</span>
@@ -282,7 +294,6 @@ export const MediScanner: React.FC = () => {
                         {result.success ? "Medicine Taken ✅" : "Missed / Not Taken ❌"}
                     </h4>
                     
-                    {/* EMAIL STATUS BOX */}
                     <div className="mt-3 bg-white p-3 rounded border border-slate-200 shadow-inner">
                         <div className="flex items-center gap-2 mb-2">
                             {emailStatus === "sending" ? (
