@@ -3,21 +3,25 @@ import { supabase } from '../services/supabase';
 import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail, Loader2, LogIn, Activity, AlertCircle } from 'lucide-react';
 
 interface FlowAuthProps {
-  onLogin: (role: string, name: string) => void;
+  // ✅ UPDATE 1: onLogin ab optional 'guardianCode' bhi lega
+  onLogin: (role: string, name: string, guardianCode?: string) => void;
 }
 
 export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<'patient' | 'guardian' | 'doctor'>('patient');
-  const [code, setCode] = useState('');
   
+  // ✅ UPDATE 2: Guardian Name ka naya state
+  const [code, setCode] = useState('');
+  const [guardianName, setGuardianName] = useState('');
+
   // Login Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // ✅ NAYA: Patient Profile Form State
+  // Patient Profile Form State
   const [profile, setProfile] = useState({
     full_name: '',
     Last_name: '',
@@ -28,15 +32,16 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
     allergies: ''
   });
 
+  // ✅ UPDATE 3: Submit function ab Name aur Code dono check karega
   const handleGuardianSubmit = () => {
-    if (code.length > 0) {
-      onLogin('guardian', 'Guardian User');
+    if (code.length > 0 && guardianName.length > 0) {
+      onLogin('guardian', guardianName, code);
     } else {
-      alert("Please enter a valid connection code.");
+      alert("Please enter both your Name and the Patient's Code.");
     }
   };
 
-  // ✅ UPDATED: Auth Logic with Profile Saving
+  // Auth Logic with Profile Saving (Same as before)
   const handleAuth = async () => {
       if (!email || !password) {
           alert("Please enter email and password");
@@ -46,14 +51,12 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
       setLoading(true);
       try {
           if (isSignUp) {
-              // --- 1. SIGN UP (Naya User) ---
               const { data, error } = await supabase.auth.signUp({
                   email: email,
                   password: password,
               });
               if (error) throw error;
 
-              // --- 2. SAVE PROFILE DATA (Agar Patient hai) ---
               if (role === 'patient' && data.user) {
                   const { error: profileError } = await supabase
                       .from('profiles')
@@ -77,7 +80,6 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
               onLogin(role, profile.full_name || 'New User');
 
           } else {
-              // --- LOGIN (Purana User) ---
               const { data, error } = await supabase.auth.signInWithPassword({
                   email: email,
                   password: password,
@@ -85,7 +87,6 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
               
               if (error) throw error;
               
-              // Login ke baad naam fetch karne ki koshish
               let displayName = data.user.email || 'User';
               if (role === 'patient') {
                   const { data: profileData } = await supabase
@@ -166,7 +167,6 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     <span className="font-bold text-slate-700">Guardian</span>
                  </button>
 
-                 {/* ✅ PATIENT CLICK -> GO TO FORM (Step 5) */}
                  <button 
                    onClick={() => { setRole('patient'); setStep(5); }}
                    className="flex flex-col items-center justify-center p-6 border-2 border-slate-100 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all gap-3"
@@ -180,7 +180,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 3: GUARDIAN CODE --- */}
+        {/* --- ✅ UPDATE 4: GUARDIAN STEP (Name + Code) --- */}
         {step === 3 && (
           <div className="space-y-6">
              <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
@@ -188,21 +188,44 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                  <div className="bg-teal-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                     <KeyRound className="w-8 h-8 text-teal-700" />
                  </div>
-                 <h2 className="text-2xl font-bold text-slate-800">Enter Access Code</h2>
-                 <p className="text-slate-500 text-sm mt-2">Enter the code provided by the patient.</p>
+                 <h2 className="text-2xl font-bold text-slate-800">Guardian Access</h2>
+                 <p className="text-slate-500 text-sm mt-2">Enter your name & patient's code.</p>
              </div>
-             <input 
-                type="text" 
-                placeholder="Ex: P-1234"
-                className="w-full p-3 bg-slate-50 border rounded-xl"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-             />
-             <button onClick={handleGuardianSubmit} className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold">Connect</button>
+             
+             {/* 1. Guardian Name Input */}
+             <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Your Name</label>
+                <input 
+                    type="text" 
+                    placeholder="e.g. Papa / Ramesh"
+                    className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
+                    value={guardianName}
+                    onChange={(e) => setGuardianName(e.target.value)}
+                />
+             </div>
+
+             {/* 2. Access Code Input */}
+             <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Patient Access Code</label>
+                <input 
+                    type="text" 
+                    placeholder="e.g. P-1234"
+                    className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-teal-500 font-mono tracking-widest"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                />
+             </div>
+
+             <button 
+                onClick={handleGuardianSubmit} 
+                className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all"
+             >
+                Connect to Patient
+             </button>
           </div>
         )}
 
-        {/* --- ✅ STEP 5: PATIENT PROFILE FORM (NAYA FEATURE) --- */}
+        {/* --- STEP 5: PATIENT PROFILE FORM --- */}
         {step === 5 && (
             <div className="space-y-4 animate-in slide-in-from-right">
                 <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600">← Back</button>
@@ -212,25 +235,20 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                 </div>
 
                 <div className="space-y-3 h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                    {/* 1. Name */}
+                    {/* Form Inputs (Same as before) */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Patient Name *</label>
                         <input type="text" value={profile.full_name} onChange={e=>setProfile({...profile, full_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none focus:border-blue-500" placeholder="e.g. Rahul Kumar" />
                     </div>
-
-                    {/* 2. Title (Optional) */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Title (Optional)</label>
                         <input type="text" value={profile.Last_name} onChange={e=>setProfile({...profile, Last_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. chauhan / kumari / sigh" />
                     </div>
-
                     <div className="flex gap-2">
-                        {/* 3. Age */}
                         <div className="flex-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Age *</label>
                             <input type="number" value={profile.age} onChange={e=>setProfile({...profile, age: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="25" />
                         </div>
-                        {/* 4. Gender */}
                         <div className="flex-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Gender *</label>
                             <select value={profile.gender} onChange={e=>setProfile({...profile, gender: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none">
@@ -238,21 +256,16 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                             </select>
                         </div>
                     </div>
-
                     <div className="flex gap-2">
-                        {/* 5. Height */}
                         <div className="flex-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Height</label>
                             <input type="text" value={profile.height} onChange={e=>setProfile({...profile, height: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="5'10" />
                         </div>
-                        {/* 6. Weight */}
                         <div className="flex-1">
                             <label className="text-[10px] font-bold text-slate-400 uppercase">Weight</label>
                             <input type="text" value={profile.weight} onChange={e=>setProfile({...profile, weight: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="70 kg" />
                         </div>
                     </div>
-
-                    {/* 7. Allergies */}
                     <div>
                         <label className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Allergies (Important)</label>
                         <textarea value={profile.allergies} onChange={e=>setProfile({...profile, allergies: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none h-16 resize-none" placeholder="e.g. Peanuts, Dust, Penicillin" />
@@ -265,8 +278,8 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                             alert("Name and Age are required!");
                             return;
                         }
-                        setIsSignUp(true); // By default assume new user needs signup to save data
-                        setStep(4); // Go to Login Screen
+                        setIsSignUp(true); 
+                        setStep(4); 
                     }}
                     className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200"
                 >
