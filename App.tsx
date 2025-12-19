@@ -6,10 +6,10 @@ import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
 import { FlowAuth } from './components/FlowAuth';
 import { DoctorDashboard } from './components/DoctorDashboard';
-// ✅ Icons Import (FileText added)
+// ✅ Icons Updated (Key, UserCheck added)
 import { 
   HeartPulse, Stethoscope, Scan, Activity, ChevronRight, 
-  Pill, ShieldPlus, LogOut, Siren, ShieldCheck, FileText 
+  Pill, ShieldPlus, LogOut, Siren, ShieldCheck, FileText, Key, UserCheck 
 } from 'lucide-react';
 
 export default function App() {
@@ -19,10 +19,33 @@ export default function App() {
   const [userName, setUserName] = useState<string>('');
   const [view, setView] = useState<FeatureView>(FeatureView.HOME);
 
+  // ✅ 1. Patient ke liye Secret Code State
+  const [patientSecretCode, setPatientSecretCode] = useState("P-1234"); 
+  // ✅ 2. Guardian ke liye Connection State
+  const [guardianConnectedTo, setGuardianConnectedTo] = useState<string>('');
+
   // --- HANDLERS ---
-  const handleLogin = (role: string, name: string) => {
+  // ✅ Login Logic Updated to accept 'code'
+  const handleLogin = (role: string, name: string, code?: string) => {
     setUserRole(role);
     setUserName(name);
+    
+    if (role === 'patient') {
+        // Patient login kare toh code generate kar lo (Simulation)
+        const randomCode = "P-" + Math.floor(1000 + Math.random() * 9000);
+        setPatientSecretCode(randomCode);
+    } 
+    else if (role === 'guardian') {
+        // Guardian Logic: Check Code
+        if (code && code.startsWith("P-")) {
+           setGuardianConnectedTo("Rahul Kumar (Patient)"); // Demo Patient Name
+           setView(FeatureView.GUARDIAN); // Seedha Guardian Verify par le jao
+        } else {
+           alert("Invalid Patient Code! Please ask the patient for the correct code starting with P-");
+           return;
+        }
+    }
+    
     setIsAuthenticated(true);
   };
 
@@ -30,6 +53,7 @@ export default function App() {
     setIsAuthenticated(false);
     setUserRole('patient');
     setView(FeatureView.HOME);
+    setGuardianConnectedTo('');
   };
 
   const handleSOS = () => {
@@ -72,7 +96,65 @@ export default function App() {
     );
   }
 
-  // --- 3. PATIENT DASHBOARD FEATURES ---
+  // --- 3. GUARDIAN DASHBOARD VIEW (✅ NEW FEATURE ADDED) ---
+  if (userRole === 'guardian') {
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+           {/* Guardian Navbar */}
+           <nav className="bg-teal-700 text-white sticky top-0 z-50 shadow-md">
+             <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                   <ShieldCheck className="w-6 h-6 text-teal-200" />
+                   <h1 className="text-xl font-bold">MediGuard <span className="text-teal-200">Connect</span></h1>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="text-right hidden sm:block">
+                       <p className="text-[10px] text-teal-200 font-bold uppercase">Guardian</p>
+                       <p className="text-sm font-bold">{userName}</p>
+                    </div>
+                    <button onClick={handleLogout} className="p-2 bg-teal-800 hover:bg-teal-600 rounded-full transition-all">
+                       <LogOut className="w-5 h-5" />
+                    </button>
+                </div>
+             </div>
+           </nav>
+
+           <main className="max-w-3xl mx-auto px-4 py-8">
+               {/* Patient Info Card */}
+               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex items-center justify-between animate-in slide-in-from-top-4">
+                   <div>
+                       <h2 className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-1">Monitoring Patient</h2>
+                       <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                           <UserCheck className="w-6 h-6 text-teal-600" /> {guardianConnectedTo}
+                       </h3>
+                   </div>
+                   <div className="text-right">
+                       <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                           ● Live Status: Active
+                       </span>
+                   </div>
+               </div>
+
+               {/* Guardian Features */}
+               <div className="space-y-6">
+                   <div className="bg-white rounded-2xl shadow-lg border border-teal-100 overflow-hidden">
+                       <div className="bg-teal-50 p-4 border-b border-teal-100">
+                           <h3 className="font-bold text-teal-800 flex items-center gap-2">
+                               <Activity className="w-5 h-5" /> Daily Adherence Check
+                           </h3>
+                       </div>
+                       <div className="p-4">
+                           {/* Use existing MediScanner in Verify Mode */}
+                           <MediScanner defaultMode="VERIFY" hideTabs={true} />
+                       </div>
+                   </div>
+               </div>
+           </main>
+        </div>
+      );
+  }
+
+  // --- 4. PATIENT DASHBOARD FEATURES ---
   const features = [
     {
       id: FeatureView.TRIAGE,
@@ -81,7 +163,6 @@ export default function App() {
       icon: <Stethoscope className="w-8 h-8 text-teal-500" />,
       color: "bg-teal-50 hover:bg-teal-100 border-teal-200"
     },
-    // ✅ NEW: Lab Reports Feature Added
     {
       id: FeatureView.REPORT,
       title: "Lab Reports",
@@ -152,6 +233,24 @@ export default function App() {
         {/* HOME VIEW */}
         {view === FeatureView.HOME && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* ✅ NEW: GUARDIAN ACCESS KEY CARD (ADDED HERE) */}
+            <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex items-center justify-between relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -mr-10 -mt-10"></div>
+                <div>
+                    <h3 className="text-slate-300 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">
+                        <Key className="w-4 h-4" /> Guardian Access Key
+                    </h3>
+                    <p className="text-3xl font-mono font-bold tracking-widest text-teal-400">{patientSecretCode}</p>
+                    <p className="text-slate-400 text-xs mt-2">Share this code with your Guardian to allow access.</p>
+                </div>
+                <div className="hidden sm:block">
+                     <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm">
+                        <ShieldCheck className="w-8 h-8 text-teal-400" />
+                     </div>
+                </div>
+            </div>
+
             <div className="text-center space-y-3 mb-10">
               <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-2 uppercase tracking-wide ${userRole === 'guardian' ? 'bg-teal-100 text-teal-800' : 'bg-blue-100 text-blue-700'}`}>
                   {userRole === 'guardian' ? '🛡️ Guardian Mode' : '👤 Patient Dashboard'}
@@ -194,7 +293,7 @@ export default function App() {
             {/* 2. Guardian Verify (Video Verify Mode) */}
             {view === FeatureView.GUARDIAN && <MediScanner defaultMode="VERIFY" hideTabs={true} />}
 
-            {/* ✅ 3. Lab Report Mode (Link Added Here) */}
+            {/* ✅ 3. Lab Report Mode */}
             {view === FeatureView.REPORT && <MediScanner defaultMode="REPORT" hideTabs={true} />}
             
             {view === FeatureView.DERMCHECK && <DermCheck />}
