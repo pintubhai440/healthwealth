@@ -259,15 +259,43 @@ export const analyzeImage = async (
   } catch (e: any) { return { error: `AI Error: ${e.message}` }; }
 };
 
-// Ye function waisa ka waisa hi rahega (No Changes)
+// ✅ UPDATED STRICT VIDEO VERIFICATION FUNCTION
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
+  // 👇 STRICT PROMPT: Isse AI "Acting" aur "Real Intake" me fark kar payega
+  const prompt = `
+  You are a strict Medical Adherence AI. Analyze this video carefully to verify if the patient ACTUALLY took the medicine.
+  
+  CHECK FOR THESE 3 STEPS:
+  1. Presence of Medicine: Can you see a pill, syrup, or inhaler?
+  2. Action: Did the person put it in their mouth?
+  3. Swallowing: Did they drink water or swallow?
+
+  CRITERIA FOR SUCCESS (true):
+  - The person MUST perform the action of taking the medicine. 
+  - Just holding the packet or looking at the camera is "success": false.
+  
+  RETURN PURE JSON:
+  {
+    "action_detected": "Describe exactly what the person did (e.g., 'Holding pill but did not swallow' or 'Swallowed pill with water')",
+    "success": boolean, 
+    "verdict_message": "A short, direct message to the guardian. (e.g., 'Medicine intake confirmed' or 'Alert: Patient stopped halfway')"
+  }`;
+
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
-      contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: "Verify pill intake. Return JSON: {action_detected, success: boolean, verdict_message}" }] },
+      contents: { 
+        parts: [
+          { inlineData: { mimeType, data: base64Data } }, 
+          { text: prompt } 
+        ] 
+      },
       config: { responseMimeType: "application/json" }
     });
     return cleanJSON(response.text || "{}");
-  } catch (e) { return { error: "Failed to analyze video." }; }
+  } catch (e) { 
+    console.error("Video Analysis Error:", e);
+    return { error: "Failed to analyze video." }; 
+  }
 };
 
 // ==========================================
