@@ -4,35 +4,42 @@ import { TriageBot } from './components/TriageBot';
 import { MediScanner } from './components/MediScanner';
 import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
-import { AuthScreen } from './components/AuthScreen'; // ✅ NEW IMPORT
-import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus, LogOut } from 'lucide-react'; // ✅ LogOut icon added
+import { FlowAuth } from './components/FlowAuth'; // ✅ Naya Auth Import
+import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus, LogOut, Siren } from 'lucide-react';
 
 export default function App() {
-  // ✅ AUTH STATE ADD KIYA
+  // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<string>('patient');
+  const [userName, setUserName] = useState<string>('');
 
   const [view, setView] = useState<FeatureView>(FeatureView.HOME);
 
-  // ✅ Login Function
-  const handleLogin = (role: string) => {
+  // Login Handler (FlowAuth se connect hai)
+  const handleLogin = (role: string, name: string) => {
     setUserRole(role);
+    setUserName(name);
     setIsAuthenticated(true);
   };
 
-  // ✅ Logout Function
+  // Logout Handler
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setUserRole('patient');
     setView(FeatureView.HOME);
   };
 
-  // ✅ MAIN LOGIC: Agar login nahi hai, to pehle AuthScreen dikhao
+  // ✅ SOS Alert Handler (Drawing Feature)
+  const handleSOS = () => {
+    alert("🆘 SOS ALERT SENT! \n\nEmergency contacts and nearby hospitals have been notified with your live location.");
+  };
+
+  // ✅ MAIN LOGIC: Agar login nahi hai, to Drawing wala Flow dikhao
   if (!isAuthenticated) {
-    return <AuthScreen onLogin={handleLogin} />;
+    return <FlowAuth onLogin={handleLogin} />;
   }
 
-  // --- NICHE KA BAAKI CODE SEM HAI, BAS NAVBAR MEIN LOGOUT BUTTON DALA HAI ---
-
+  // --- APP DASHBOARD (Features same rahenge) ---
   const features = [
     {
       id: FeatureView.TRIAGE,
@@ -76,22 +83,30 @@ export default function App() {
             <div className="bg-teal-600 p-2 rounded-lg">
                <HeartPulse className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-600 to-blue-600">
+            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-600 to-blue-600 hidden md:block">
               MediGuard AI
             </h1>
+            <h1 className="text-xl font-bold text-teal-600 md:hidden">MediGuard</h1>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+             {/* ✅ SOS BUTTON (Drawing Request) */}
+             <button 
+                onClick={handleSOS}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2 animate-pulse shadow-lg shadow-red-200"
+             >
+                <Siren className="w-4 h-4" /> <span className="hidden md:inline">SOS</span>
+             </button>
+
              {view !== FeatureView.HOME && (
                 <button 
                   onClick={() => setView(FeatureView.HOME)}
                   className="text-sm font-medium text-slate-500 hover:text-teal-600 hidden md:block"
                 >
-                  Back to Home
+                  Home
                 </button>
              )}
              
-             {/* ✅ LOGOUT BUTTON ADDED HERE */}
              <button 
                 onClick={handleLogout}
                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
@@ -109,14 +124,17 @@ export default function App() {
         {view === FeatureView.HOME && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-3 mb-10">
-              {/* ✅ USER ROLE DISPLAY */}
-              <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold mb-2 uppercase tracking-wide">
-                  {userRole === 'doctor' ? '👨‍⚕️ Doctor Mode' : '👤 Patient Mode'}
+              <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-2 uppercase tracking-wide ${userRole === 'guardian' ? 'bg-teal-100 text-teal-800' : 'bg-blue-100 text-blue-700'}`}>
+                  {userRole === 'guardian' ? '🛡️ Guardian Mode' : '👤 Patient Dashboard'}
               </span>
               
-              <h2 className="text-3xl font-bold text-slate-800">Your Personal AI Health Assistant</h2>
+              <h2 className="text-3xl font-bold text-slate-800">
+                Hello, {userRole === 'guardian' ? 'Guardian' : 'Patient'}
+              </h2>
               <p className="text-slate-500 max-w-lg mx-auto">
-                Instant triage, medication verification, and recovery coaching powered by Gemini 2.5 & 3 Pro.
+                {userRole === 'guardian' 
+                  ? "Monitoring patient adherence and alerts in real-time."
+                  : "Instant triage, medication verification, and recovery coaching."}
               </p>
             </div>
 
@@ -139,17 +157,17 @@ export default function App() {
               ))}
             </div>
 
-            <div className="mt-12 bg-indigo-900 text-white p-6 rounded-2xl flex items-center justify-between shadow-xl">
+            {/* Hackathon Badge */}
+            <div className="mt-12 bg-slate-800 text-white p-6 rounded-2xl flex items-center justify-between shadow-xl">
                <div>
-                  <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><ShieldPlus className="w-5 h-5"/> Hackathon Prototype</h3>
-                  <p className="text-indigo-200 text-sm">Developed by Team AURAlytics.</p>
+                  <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><ShieldPlus className="w-5 h-5"/> Team AURAlytics</h3>
+                  <p className="text-slate-400 text-sm">Prototype Version 1.0</p>
                </div>
-               <div className="hidden md:block opacity-50 text-6xl">🤖</div>
             </div>
           </div>
         )}
 
-        {/* Feature Views */}
+        {/* Feature Views (UNCHANGED - SAFE) */}
         <div className="animate-in zoom-in-95 duration-300">
             {view === FeatureView.TRIAGE && <TriageBot />}
             {view === FeatureView.MEDISCAN && <MediScanner />}
