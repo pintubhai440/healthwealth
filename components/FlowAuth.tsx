@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
-import { supabase } from '../services/supabase'; // ✅ Database connection joda
-import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail, Loader2, LogIn } from 'lucide-react';
+import { supabase } from '../services/supabase';
+import { Building2, User, Shield, Stethoscope, ArrowRight, Lock, KeyRound, Mail, Loader2, LogIn, Activity, AlertCircle } from 'lucide-react';
 
 interface FlowAuthProps {
   onLogin: (role: string, name: string) => void;
 }
 
 export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
-  // Step 1: Selection (Business vs Personal)
-  // Step 2: Role (Guardian vs Patient)
-  // Step 3: Guardian Code Input
-  // Step 4: Business/Doctor Login (AB YEH REAL DATABASE SE CHALEGA ✅)
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<'patient' | 'guardian' | 'doctor'>('patient');
   const [code, setCode] = useState('');
@@ -18,8 +14,19 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
   // Login Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false); // ✅ Loading animation ke liye
-  const [isSignUp, setIsSignUp] = useState(false); // ✅ Login/Signup switch ke liye
+  const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  // ✅ NAYA: Patient Profile Form State
+  const [profile, setProfile] = useState({
+    full_name: '',
+    title: '',
+    age: '',
+    gender: 'Male',
+    height: '',
+    weight: '',
+    allergies: ''
+  });
 
   const handleGuardianSubmit = () => {
     if (code.length > 0) {
@@ -29,7 +36,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
     }
   };
 
-  // ✅ NAYA: Real Database Login Function
+  // ✅ UPDATED: Auth Logic with Profile Saving
   const handleAuth = async () => {
       if (!email || !password) {
           alert("Please enter email and password");
@@ -39,16 +46,38 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
       setLoading(true);
       try {
           if (isSignUp) {
-              // --- SIGN UP LOGIC (Naya Account) ---
-              const { error } = await supabase.auth.signUp({
+              // --- 1. SIGN UP (Naya User) ---
+              const { data, error } = await supabase.auth.signUp({
                   email: email,
                   password: password,
               });
               if (error) throw error;
-              alert("Account Created! You can now Log In.");
-              setIsSignUp(false); // Wapas login par bhejo
+
+              // --- 2. SAVE PROFILE DATA (Agar Patient hai) ---
+              if (role === 'patient' && data.user) {
+                  const { error: profileError } = await supabase
+                      .from('profiles')
+                      .insert([
+                          {
+                              id: data.user.id,
+                              email: email,
+                              full_name: profile.full_name,
+                              title: profile.title,
+                              age: profile.age ? parseInt(profile.age) : null,
+                              gender: profile.gender,
+                              height: profile.height,
+                              weight: profile.weight,
+                              allergies: profile.allergies
+                          }
+                      ]);
+                  if (profileError) console.error("Profile Save Error:", profileError);
+              }
+
+              alert("Account Created! You are logged in.");
+              onLogin(role, profile.full_name || 'New User');
+
           } else {
-              // --- LOGIN LOGIC (Purana Account) ---
+              // --- LOGIN (Purana User) ---
               const { data, error } = await supabase.auth.signInWithPassword({
                   email: email,
                   password: password,
@@ -56,10 +85,18 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
               
               if (error) throw error;
               
-              // Login Success!
-              // Hum role ko 'doctor' maan rahe hain kyunki ye step 4 hai, 
-              // par aap chaho toh 'patient' bhi bhej sakte ho.
-              onLogin('doctor', data.user.email || 'Dr. User'); 
+              // Login ke baad naam fetch karne ki koshish
+              let displayName = data.user.email || 'User';
+              if (role === 'patient') {
+                  const { data: profileData } = await supabase
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', data.user.id)
+                    .single();
+                  if (profileData) displayName = profileData.full_name;
+              }
+
+              onLogin(role, displayName); 
           }
       } catch (error: any) {
           alert(error.message || "Login failed. Check details.");
@@ -72,35 +109,35 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
       <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-100 animate-in fade-in zoom-in-95 duration-500 relative overflow-hidden">
         
-        {/* Background Design Element */}
+        {/* Background Design */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -z-0 opacity-50"></div>
 
-        {/* --- STEP 1: BUSINESS vs PERSONAL (SAME AS BEFORE) --- */}
+        {/* --- STEP 1: BUSINESS vs PERSONAL --- */}
         {step === 1 && (
           <div className="space-y-6">
              <h2 className="text-2xl font-bold text-slate-800 text-center">Select Account Type</h2>
              
              {/* Business Button */}
              <button 
-                onClick={() => setStep(4)}
-                className="w-full border-2 border-slate-100 p-4 rounded-2xl flex items-center gap-4 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm group"
+                onClick={() => { setRole('doctor'); setStep(4); }}
+                className="w-full border-2 border-slate-100 p-4 rounded-2xl flex items-center gap-4 bg-white hover:bg-slate-50 transition-all shadow-sm group"
              >
-                <div className="bg-slate-100 p-3 rounded-xl group-hover:bg-slate-200 transition-colors">
+                <div className="bg-slate-100 p-3 rounded-xl group-hover:bg-slate-200">
                     <Building2 className="w-6 h-6 text-slate-500" />
                 </div>
                 <div className="text-left">
                     <h3 className="font-bold text-slate-800 text-lg">Business / Hospital</h3>
                     <p className="text-xs text-slate-500 font-medium">Doctors & Clinics Login</p>
                 </div>
-                <ArrowRight className="w-5 h-5 text-slate-300 ml-auto group-hover:text-slate-500" />
+                <ArrowRight className="w-5 h-5 text-slate-300 ml-auto" />
              </button>
 
-             {/* Customer (End User) */}
+             {/* Customer Button */}
              <button 
                onClick={() => setStep(2)}
-               className="w-full border-2 border-blue-100 p-4 rounded-2xl flex items-center gap-4 bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-all shadow-sm group"
+               className="w-full border-2 border-blue-100 p-4 rounded-2xl flex items-center gap-4 bg-blue-50 hover:bg-blue-100 transition-all shadow-sm group"
              >
-                <div className="bg-blue-600 p-3 rounded-xl shadow-lg shadow-blue-200 group-hover:scale-110 transition-transform">
+                <div className="bg-blue-600 p-3 rounded-xl shadow-lg shadow-blue-200">
                     <User className="w-6 h-6 text-white" />
                 </div>
                 <div className="text-left">
@@ -112,30 +149,29 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 2: PATIENT vs GUARDIAN (SAME AS BEFORE) --- */}
+        {/* --- STEP 2: PATIENT vs GUARDIAN --- */}
         {step === 2 && (
           <div className="space-y-6">
              <button onClick={() => setStep(1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
              <h2 className="text-2xl font-bold text-slate-800 text-center">Are you a...</h2>
 
              <div className="grid grid-cols-2 gap-4">
-                 {/* Guardian Option */}
                  <button 
                    onClick={() => { setRole('guardian'); setStep(3); }}
-                   className="flex flex-col items-center justify-center p-6 border-2 border-slate-100 rounded-2xl hover:border-teal-400 hover:bg-teal-50 transition-all gap-3 group"
+                   className="flex flex-col items-center justify-center p-6 border-2 border-slate-100 rounded-2xl hover:border-teal-400 hover:bg-teal-50 transition-all gap-3"
                  >
-                    <div className="bg-teal-100 p-4 rounded-full group-hover:bg-teal-200 transition-colors">
+                    <div className="bg-teal-100 p-4 rounded-full">
                         <Shield className="w-8 h-8 text-teal-700" />
                     </div>
                     <span className="font-bold text-slate-700">Guardian</span>
                  </button>
 
-                 {/* Patient Option */}
+                 {/* ✅ PATIENT CLICK -> GO TO FORM (Step 5) */}
                  <button 
-                   onClick={() => onLogin('patient', 'Patient User')}
-                   className="flex flex-col items-center justify-center p-6 border-2 border-slate-100 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all gap-3 group"
+                   onClick={() => { setRole('patient'); setStep(5); }}
+                   className="flex flex-col items-center justify-center p-6 border-2 border-slate-100 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all gap-3"
                  >
-                    <div className="bg-blue-100 p-4 rounded-full group-hover:bg-blue-200 transition-colors">
+                    <div className="bg-blue-100 p-4 rounded-full">
                         <Stethoscope className="w-8 h-8 text-blue-700" />
                     </div>
                     <span className="font-bold text-slate-700">Patient</span>
@@ -144,7 +180,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        {/* --- STEP 3: GUARDIAN CODE INPUT (SAME AS BEFORE) --- */}
+        {/* --- STEP 3: GUARDIAN CODE --- */}
         {step === 3 && (
           <div className="space-y-6">
              <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
@@ -155,40 +191,101 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                  <h2 className="text-2xl font-bold text-slate-800">Enter Access Code</h2>
                  <p className="text-slate-500 text-sm mt-2">Enter the code provided by the patient.</p>
              </div>
-
-             <div className="space-y-4">
-                <div className="relative">
-                    <Lock className="absolute left-4 top-3.5 w-5 h-5 text-slate-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Ex: P-1234"
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-lg tracking-widest text-slate-800"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                    />
-                </div>
-                <button 
-                  onClick={handleGuardianSubmit}
-                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-teal-200 transition-all"
-                >
-                  Connect Profile
-                </button>
-             </div>
+             <input 
+                type="text" 
+                placeholder="Ex: P-1234"
+                className="w-full p-3 bg-slate-50 border rounded-xl"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+             />
+             <button onClick={handleGuardianSubmit} className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold">Connect</button>
           </div>
         )}
 
-        {/* --- STEP 4: BUSINESS LOGIN (UPDATED WITH SUPABASE ✅) --- */}
+        {/* --- ✅ STEP 5: PATIENT PROFILE FORM (NAYA FEATURE) --- */}
+        {step === 5 && (
+            <div className="space-y-4 animate-in slide-in-from-right">
+                <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600">← Back</button>
+                <div className="text-center mb-2">
+                    <h2 className="text-xl font-bold text-slate-800">Your Health Profile</h2>
+                    <p className="text-xs text-slate-500">This helps AI customize your diet & recovery.</p>
+                </div>
+
+                <div className="space-y-3 h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                    {/* 1. Name */}
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Patient Name *</label>
+                        <input type="text" value={profile.full_name} onChange={e=>setProfile({...profile, full_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none focus:border-blue-500" placeholder="e.g. Rahul Kumar" />
+                    </div>
+
+                    {/* 2. Title (Optional) */}
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Title (Optional)</label>
+                        <input type="text" value={profile.title} onChange={e=>setProfile({...profile, title: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. Mr. / Dr. / Er." />
+                    </div>
+
+                    <div className="flex gap-2">
+                        {/* 3. Age */}
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Age *</label>
+                            <input type="number" value={profile.age} onChange={e=>setProfile({...profile, age: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="25" />
+                        </div>
+                        {/* 4. Gender */}
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Gender *</label>
+                            <select value={profile.gender} onChange={e=>setProfile({...profile, gender: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none">
+                                <option>Male</option><option>Female</option><option>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                        {/* 5. Height */}
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Height</label>
+                            <input type="text" value={profile.height} onChange={e=>setProfile({...profile, height: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="5'10" />
+                        </div>
+                        {/* 6. Weight */}
+                        <div className="flex-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Weight</label>
+                            <input type="text" value={profile.weight} onChange={e=>setProfile({...profile, weight: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="70 kg" />
+                        </div>
+                    </div>
+
+                    {/* 7. Allergies */}
+                    <div>
+                        <label className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Allergies (Important)</label>
+                        <textarea value={profile.allergies} onChange={e=>setProfile({...profile, allergies: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none h-16 resize-none" placeholder="e.g. Peanuts, Dust, Penicillin" />
+                    </div>
+                </div>
+
+                <button 
+                    onClick={() => {
+                        if(!profile.full_name || !profile.age) {
+                            alert("Name and Age are required!");
+                            return;
+                        }
+                        setIsSignUp(true); // By default assume new user needs signup to save data
+                        setStep(4); // Go to Login Screen
+                    }}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200"
+                >
+                    Save & Continue
+                </button>
+            </div>
+        )}
+
+        {/* --- STEP 4: AUTH (Login/Signup) --- */}
         {step === 4 && (
             <div className="space-y-6 animate-in slide-in-from-right">
-                <button onClick={() => setStep(1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
+                <button onClick={() => setStep(role === 'patient' ? 5 : 1)} className="text-xs text-slate-400 hover:text-slate-600 mb-2">← Back</button>
                 
                 <div className="text-center mb-6">
                     <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
-                        <Stethoscope className="w-8 h-8 text-white" />
+                        {role === 'doctor' ? <Building2 className="w-8 h-8 text-white" /> : <User className="w-8 h-8 text-white" />}
                     </div>
-                    {/* ✅ Header Text Changes Dynamically */}
                     <h2 className="text-2xl font-bold text-slate-800">{isSignUp ? "Create Account" : "Welcome Back"}</h2>
-                    <p className="text-slate-500 text-sm mt-1">Secure Database Login</p>
+                    <p className="text-slate-500 text-sm mt-1">{role === 'patient' ? "Secure your health data" : "Hospital Login"}</p>
                 </div>
 
                 <div className="space-y-4">
@@ -196,7 +293,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                         <Mail className="w-5 h-5 text-slate-400 mr-3" />
                         <input 
                             type="email" 
-                            placeholder="doctor@hospital.com"
+                            placeholder="name@example.com"
                             className="bg-transparent outline-none w-full text-slate-800"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -213,17 +310,15 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                         />
                     </div>
                     
-                    {/* ✅ REAL Login Button */}
                     <button 
                         onClick={handleAuth}
                         disabled={loading}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
                     >
-                        {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? "Sign Up" : <><LogIn className="w-4 h-4"/> Sign In</>)}
+                        {loading ? <Loader2 className="animate-spin" /> : (isSignUp ? "Create & Save Profile" : "Sign In")}
                     </button>
                 </div>
 
-                {/* ✅ Login/Signup Toggle */}
                 <div className="text-center mt-4 border-t border-slate-100 pt-4">
                      <p className="text-sm text-slate-500">
                         {isSignUp ? "Already have an account?" : "New to MediGuard?"}
