@@ -1,5 +1,14 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
+// ✅ YEH INTERFACE ADD KAREIN
+interface MiniProfile {
+  age?: string;
+  weight?: string;
+  allergies?: string;
+  gender?: string;
+  condition?: string;
+}
+
 // ==========================================
 // 1. KEY ROTATION LOGIC (NO CHANGES)
 // ==========================================
@@ -63,19 +72,33 @@ const cleanJSON = (text: string) => {
 const CHAT_MODEL_NAME = 'gemini-2.5-flash-lite'; 
 
 // ==========================================
-// 2. TRIAGE CHAT (RESTORED ORIGINAL LOGIC ✅)
+// 2. TRIAGE CHAT (Updated for Profile)
 // ==========================================
 
-// ✅ FINAL FIXED TRIAGE FUNCTION (100% Working Maps Link)
 export const runTriageTurn = async (
   history: { role: string; text: string }[],
   currentInput: string,
   step: number,
-  userLocation?: { lat: number; lng: number }
+  userLocation?: { lat: number; lng: number },
+  profile?: MiniProfile // 👈 Naya Parameter Joda
 ) => {
   const model = CHAT_MODEL_NAME;
 
+  // ✅ Profile Context Inject Karein
+  let profileText = "";
+  if (profile) {
+    profileText = `
+    PATIENT PROFILE (CRITICAL CONTEXT):
+    - Age: ${profile.age || 'Unknown'}
+    - Gender: ${profile.gender || 'Unknown'}
+    - Weight: ${profile.weight || 'Unknown'}
+    - Known Allergies: ${profile.allergies || 'None'}
+    
+    INSTRUCTION: Consider this profile in your diagnosis. If the user suggests a medicine they are allergic to, WARN THEM immediately.`;
+  }
+
   let systemInstruction = `You are a professional, empathetic Medical Triage AI assistant.
+  ${profileText}
   CURRENT STATUS: Step ${step}/3.
   
   GOAL:
@@ -143,11 +166,8 @@ export const runTriageTurn = async (
             const title = match[1].replace(/\*/g, '').trim();
             let url = match[2];
 
-            // 🛠️ FIX: Standard Google Maps Search URL
-            // Agar link valid nahi hai, toh hum 'maps.google.com' wala naya link banayenge
             if (!url.startsWith('https://www.google.com/maps') && !url.startsWith('https://maps.google.com')) {
                 const query = encodeURIComponent(title + " near me");
-                // ✅ CORRECT URL FORMAT
                 url = `https://www.google.com/maps/search/?api=1&query=${query}`; 
             }
 
@@ -164,7 +184,6 @@ export const runTriageTurn = async (
         
         groundingUrls.push({ 
             title: `Find ${searchTerm} Nearby`, 
-            // ✅ Fallback mein bhi SAHI LINK
             uri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchTerm + " near me")}`, 
             source: "Google Maps" 
         });
@@ -206,10 +225,31 @@ export const generateTTS = async (text: string) => {
 };
 
 // ==========================================
+// ==========================================
 // 5. IMAGE & VIDEO ANALYSIS
 // ==========================================
-export const analyzeImage = async (base64Data: string, mimeType: string, type: 'MEDICINE' | 'DERM') => {
-  const prompt = type === 'MEDICINE' ? "Identify medicine. Return JSON: {name, purpose, dosage_warning}." : "Analyze skin. Return JSON: {condition_name, verdict, explanation, recommended_action}.";
+export const analyzeImage = async (
+  base64Data: string, 
+  mimeType: string, 
+  type: 'MEDICINE' | 'DERM',
+  profile?: MiniProfile // 👈 Ye Naya Parameter hai
+) => {
+  let prompt = "";
+
+  if (type === 'MEDICINE') {
+     // ✅ Medicine ke liye Allergy Check logic
+     prompt = `Identify this medicine. Return JSON: {name, purpose, dosage_warning}.
+     
+     CRITICAL SAFETY CHECK:
+     The user has these allergies: "${profile?.allergies || 'None'}".
+     If the identified medicine contains these allergens, set "dosage_warning" to: "⚠️ DANGER: CONTAINS [Allergen]! DO NOT TAKE."
+     Otherwise, give standard warnings.`;
+  } else {
+     // ✅ Derm ke liye Age/Gender logic
+     prompt = `Analyze skin condition. Patient is ${profile?.age || '?'} years old ${profile?.gender || ''}.
+     Return JSON: {condition_name, verdict, explanation, recommended_action}.`;
+  }
+
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
       contents: { parts: [{ inlineData: { mimeType, data: base64Data } }, { text: prompt }] },
@@ -219,6 +259,7 @@ export const analyzeImage = async (base64Data: string, mimeType: string, type: '
   } catch (e: any) { return { error: `AI Error: ${e.message}` }; }
 };
 
+// Ye function waisa ka waisa hi rahega (No Changes)
 export const analyzeMedicineVideo = async (base64Data: string, mimeType: string) => {
   try {
     const response = await generateContentWithRetry(CHAT_MODEL_NAME, {
@@ -282,12 +323,19 @@ export const findYoutubeVideo = async (query: string) => {
 };
 
 // ==========================================
-// 8. AI COACH EXERCISE ANALYZER (ADDED ✅)
+// 8. AI COACH EXERCISE ANALYZER (Updated for Body Type)
 // ==========================================
-export const analyzeExerciseVideo = async (base64Data: string, mimeType: string, ailment: string, exercise: string) => {
+export const analyzeExerciseVideo = async (
+  base64Data: string, 
+  mimeType: string, 
+  ailment: string, 
+  exercise: string,
+  profile?: MiniProfile // 👈 Ye naya parameter zaroori hai
+) => {
   const prompt = `You are an expert Physiotherapist AI. 
+  Patient Profile: Age ${profile?.age || 'Unknown'}, Weight ${profile?.weight || 'Unknown'}.
   The user has "${ailment}" and is performing "${exercise}".
-  Analyze the video for form, safety, and correctness.
+  Analyze the video for form, safety, and correctness considering their age and weight constraints.
   
   RETURN PURE JSON:
   {
