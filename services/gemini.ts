@@ -228,26 +228,47 @@ export const generateTTS = async (text: string) => {
 // ==========================================
 // 5. IMAGE & VIDEO ANALYSIS
 // ==========================================
+// 1. type definition update karein
 export const analyzeImage = async (
   base64Data: string, 
   mimeType: string, 
-  type: 'MEDICINE' | 'DERM',
-  profile?: MiniProfile // 👈 Ye Naya Parameter hai
+  type: 'MEDICINE' | 'DERM' | 'REPORT', // 👈 'REPORT' add kiya
+  profile?: MiniProfile 
 ) => {
   let prompt = "";
 
   if (type === 'MEDICINE') {
-     // ✅ Medicine ke liye Allergy Check logic
+     // ... Medicine Logic (Same as before) ...
      prompt = `Identify this medicine. Return JSON: {name, purpose, dosage_warning}.
-     
-     CRITICAL SAFETY CHECK:
-     The user has these allergies: "${profile?.allergies || 'None'}".
-     If the identified medicine contains these allergens, set "dosage_warning" to: "⚠️ DANGER: CONTAINS [Allergen]! DO NOT TAKE."
-     Otherwise, give standard warnings.`;
-  } else {
-     // ✅ Derm ke liye Age/Gender logic
-     prompt = `Analyze skin condition. Patient is ${profile?.age || '?'} years old ${profile?.gender || ''}.
+     CRITICAL SAFETY CHECK: The user has allergies: "${profile?.allergies || 'None'}".
+     If allergens found, warning: "⚠️ DANGER". Otherwise standard warning.`;
+
+  } else if (type === 'DERM') {
+     // ... Derm Logic (Same as before) ...
+     prompt = `Analyze skin condition. Patient: ${profile?.age || '?'} yrs, ${profile?.gender || ''}.
      Return JSON: {condition_name, verdict, explanation, recommended_action}.`;
+
+  } else if (type === 'REPORT') {
+     // ✅ NAYA FEATURE: LAB REPORT ANALYZER
+     prompt = `You are an expert Doctor AI. Analyze this medical lab report (Blood test, Thyroid, etc.).
+     Patient Profile: ${profile?.age || 'Unknown'} years old, ${profile?.gender || 'Unknown'}.
+
+     Task:
+     1. Extract key abnormal values.
+     2. Explain what they mean in SIMPLE terms for a layman.
+     3. Give lifestyle/diet tips based on the report.
+
+     RETURN JSON format:
+     {
+       "report_type": "e.g., CBC Blood Test / Thyroid Profile",
+       "summary": "A simple 2-line summary of health status.",
+       "findings": [
+          { "parameter": "Hemoglobin", "value": "10.5", "status": "Low", "meaning": "Causes weakness/anemia." },
+          { "parameter": "TSH", "value": "5.5", "status": "High", "meaning": "Indicates Hypothyroidism." }
+       ],
+       "health_tips": ["Eat iron-rich food", "Sleep 8 hours", "Consult doctor for medication"],
+       "overall_status": "Normal / Attention Needed / Critical"
+     }`;
   }
 
   try {
