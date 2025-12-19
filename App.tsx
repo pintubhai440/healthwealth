@@ -4,10 +4,34 @@ import { TriageBot } from './components/TriageBot';
 import { MediScanner } from './components/MediScanner';
 import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
-import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus } from 'lucide-react';
+import { AuthScreen } from './components/AuthScreen'; // ✅ NEW IMPORT
+import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus, LogOut } from 'lucide-react'; // ✅ LogOut icon added
 
 export default function App() {
+  // ✅ AUTH STATE ADD KIYA
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<string>('patient');
+
   const [view, setView] = useState<FeatureView>(FeatureView.HOME);
+
+  // ✅ Login Function
+  const handleLogin = (role: string) => {
+    setUserRole(role);
+    setIsAuthenticated(true);
+  };
+
+  // ✅ Logout Function
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setView(FeatureView.HOME);
+  };
+
+  // ✅ MAIN LOGIC: Agar login nahi hai, to pehle AuthScreen dikhao
+  if (!isAuthenticated) {
+    return <AuthScreen onLogin={handleLogin} />;
+  }
+
+  // --- NICHE KA BAAKI CODE SEM HAI, BAS NAVBAR MEIN LOGOUT BUTTON DALA HAI ---
 
   const features = [
     {
@@ -56,14 +80,26 @@ export default function App() {
               MediGuard AI
             </h1>
           </div>
-          {view !== FeatureView.HOME && (
-            <button 
-              onClick={() => setView(FeatureView.HOME)}
-              className="text-sm font-medium text-slate-500 hover:text-teal-600"
-            >
-              Back to Home
-            </button>
-          )}
+          
+          <div className="flex items-center gap-4">
+             {view !== FeatureView.HOME && (
+                <button 
+                  onClick={() => setView(FeatureView.HOME)}
+                  className="text-sm font-medium text-slate-500 hover:text-teal-600 hidden md:block"
+                >
+                  Back to Home
+                </button>
+             )}
+             
+             {/* ✅ LOGOUT BUTTON ADDED HERE */}
+             <button 
+                onClick={handleLogout}
+                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                title="Sign Out"
+             >
+                <LogOut className="w-5 h-5" />
+             </button>
+          </div>
         </div>
       </nav>
 
@@ -73,6 +109,11 @@ export default function App() {
         {view === FeatureView.HOME && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-3 mb-10">
+              {/* ✅ USER ROLE DISPLAY */}
+              <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold mb-2 uppercase tracking-wide">
+                  {userRole === 'doctor' ? '👨‍⚕️ Doctor Mode' : '👤 Patient Mode'}
+              </span>
+              
               <h2 className="text-3xl font-bold text-slate-800">Your Personal AI Health Assistant</h2>
               <p className="text-slate-500 max-w-lg mx-auto">
                 Instant triage, medication verification, and recovery coaching powered by Gemini 2.5 & 3 Pro.
