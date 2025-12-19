@@ -221,7 +221,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     {/* 2. Title (Optional) */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Title (Optional)</label>
-                        <input type="text" value={profile.Last_name} onChange={e=>setProfile({...profile, Last_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. chaauhan / kumari / sigh" />
+                        <input type="text" value={profile.Last_name} onChange={e=>setProfile({...profile, Last_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. chauhan / kumari / sigh" />
                     </div>
 
                     <div className="flex gap-2">
