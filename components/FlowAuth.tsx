@@ -62,7 +62,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                               id: data.user.id,
                               email: email,
                               full_name: profile.full_name,
-                              title: profile.title,
+                              Last_name: profile.Last_name,
                               age: profile.age ? parseInt(profile.age) : null,
                               gender: profile.gender,
                               height: profile.height,
@@ -208,7 +208,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                 <button onClick={() => setStep(2)} className="text-xs text-slate-400 hover:text-slate-600">← Back</button>
                 <div className="text-center mb-2">
                     <h2 className="text-xl font-bold text-slate-800">Your Health Profile</h2>
-                    <p className="text-xs text-slate-500">This helps AI customize your diet & recovery.</p>
+                    <p className="text-xs text-slate-500">This is helps your diet & recovery.</p>
                 </div>
 
                 <div className="space-y-3 h-[350px] overflow-y-auto pr-2 custom-scrollbar">
@@ -221,7 +221,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     {/* 2. Title (Optional) */}
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Title (Optional)</label>
-                        <input type="text" value={profile.title} onChange={e=>setProfile({...profile, title: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. Mr. / Dr. / Er." />
+                        <input type="text" value={profile.Last_name} onChange={e=>setProfile({...profile, Last_name: e.target.value})} className="w-full p-2 bg-slate-50 border rounded-lg outline-none" placeholder="e.g. chaauhan / kumari / sigh" />
                     </div>
 
                     <div className="flex gap-2">
