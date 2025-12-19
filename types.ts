@@ -1,3 +1,12 @@
+export interface PatientProfile {
+  full_name: string;
+  title?: string;
+  age: string;
+  gender: string;
+  height?: string;
+  weight?: string;
+  allergies?: string;
+}
 export enum FeatureView {
   HOME = 'HOME',
   TRIAGE = 'TRIAGE',
