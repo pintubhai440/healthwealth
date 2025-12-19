@@ -6,8 +6,11 @@ import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
 import { FlowAuth } from './components/FlowAuth';
 import { DoctorDashboard } from './components/DoctorDashboard';
-// ✅ ShieldCheck import kiya (5th Box ke liye)
-import { HeartPulse, Stethoscope, Scan, Activity, ChevronRight, Pill, ShieldPlus, LogOut, Siren, ShieldCheck } from 'lucide-react';
+// ✅ Icons Import (FileText added)
+import { 
+  HeartPulse, Stethoscope, Scan, Activity, ChevronRight, 
+  Pill, ShieldPlus, LogOut, Siren, ShieldCheck, FileText 
+} from 'lucide-react';
 
 export default function App() {
   // --- STATE MANAGEMENT ---
@@ -69,7 +72,7 @@ export default function App() {
     );
   }
 
-  // --- 3. PATIENT DASHBOARD FEATURES (5 ITEMS) ---
+  // --- 3. PATIENT DASHBOARD FEATURES ---
   const features = [
     {
       id: FeatureView.TRIAGE,
@@ -77,6 +80,14 @@ export default function App() {
       desc: "Chat with AI Doctor for instant diagnosis.",
       icon: <Stethoscope className="w-8 h-8 text-teal-500" />,
       color: "bg-teal-50 hover:bg-teal-100 border-teal-200"
+    },
+    // ✅ NEW: Lab Reports Feature Added
+    {
+      id: FeatureView.REPORT,
+      title: "Lab Reports",
+      desc: "Upload Blood/Thyroid reports for simple analysis.",
+      icon: <FileText className="w-8 h-8 text-indigo-500" />,
+      color: "bg-indigo-50 hover:bg-indigo-100 border-indigo-200"
     },
     {
       id: FeatureView.MEDISCAN,
@@ -86,7 +97,7 @@ export default function App() {
       color: "bg-blue-50 hover:bg-blue-100 border-blue-200"
     },
     {
-      id: FeatureView.GUARDIAN, // ✅ 5th Feature (NEW)
+      id: FeatureView.GUARDIAN,
       title: "Guardian Verify",
       desc: "Remote adherence check & alerts.",
       icon: <ShieldCheck className="w-8 h-8 text-purple-500" />,
@@ -177,11 +188,14 @@ export default function App() {
         <div className="animate-in zoom-in-95 duration-300">
             {view === FeatureView.TRIAGE && <TriageBot />}
             
-            {/* 1. MediScanner (Sirf ID Mode - Tabs Hidden) */}
+            {/* 1. MediScanner (Pill ID Mode) */}
             {view === FeatureView.MEDISCAN && <MediScanner defaultMode="ID" hideTabs={true} />}
             
-            {/* 2. Guardian Verify (Sirf Verify Mode - Tabs Hidden) */}
+            {/* 2. Guardian Verify (Video Verify Mode) */}
             {view === FeatureView.GUARDIAN && <MediScanner defaultMode="VERIFY" hideTabs={true} />}
+
+            {/* ✅ 3. Lab Report Mode (Link Added Here) */}
+            {view === FeatureView.REPORT && <MediScanner defaultMode="REPORT" hideTabs={true} />}
             
             {view === FeatureView.DERMCHECK && <DermCheck />}
             {view === FeatureView.RECOVERY && <RecoveryCoach />}
