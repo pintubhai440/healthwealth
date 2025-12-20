@@ -7,9 +7,9 @@ export const DoctorDashboard: React.FC = () => {
 
   // --- MOCK DATA (Video Jaisa) ---
   const stats = [
-    { label: "Patients", value: "24", sub: "+12% today", icon: <Users className="w-5 h-5 text-blue-600" />, bg: "bg-blue-50" },
-    { label: "Consults", value: "8", sub: "Scheduled", icon: <Calendar className="w-5 h-5 text-purple-600" />, bg: "bg-purple-50" },
-    { label: "AI Score", value: "98%", sub: "Response Rate", icon: <Activity className="w-5 h-5 text-green-600" />, bg: "bg-green-50" },
+    { label: "Patients", value: "33", sub: "+10% from yesterday", icon: <Users className="w-5 h-5 text-blue-600" />, bg: "bg-blue-50" },
+    { label: "Consults", value: "2", sub: "Scheduled", icon: <Calendar className="w-5 h-5 text-purple-600" />, bg: "bg-purple-50" },
+    { label: "Score", value: "98%", sub: "Response Rate", icon: <Activity className="w-5 h-5 text-green-600" />, bg: "bg-green-50" },
   ];
 
   const requests = [
