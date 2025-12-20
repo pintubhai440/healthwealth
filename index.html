@@ -8,12 +8,12 @@
     
     <script>
       tailwind.config = {
-        darkMode: 'class', // ✅ Ye line zaroori hai manual toggle ke liye
+        darkMode: 'class', 
         theme: {
           extend: {
             colors: {
               slate: {
-                850: '#1e293b', // Dark mode ke liye extra colors
+                850: '#1e293b', 
                 950: '#020617',
               }
             }
@@ -23,7 +23,7 @@
     </script>
 
     <style>
-      /* Custom scrollbar for chat areas */
+      /* Custom scrollbar for chat areas (Same as before) */
       .scrollbar-hide::-webkit-scrollbar {
           display: none;
       }
@@ -32,49 +32,76 @@
           scrollbar-width: none;
       }
 
-      /* ✅ NEW: GOOGLE TRANSLATE STYLING (ADDED) */
-      /* Hide top banner */
+      /* ✅ GOOGLE TRANSLATE - PREMIUM STYLING (UPDATED) */
+      
+      /* 1. Top Banner aur Google Bar Hide karein */
       body { top: 0 !important; }
       .goog-te-banner-frame { display: none !important; }
-      
-      /* Widget Container Styling */
+
+      /* 2. Widget Container ko Button jaisa banayein */
       .goog-te-gadget-simple {
         background-color: transparent !important;
         border: none !important;
         padding: 0 !important;
-        font-family: inherit !important;
+        font-family: 'ui-sans-serif', 'system-ui', sans-serif !important; /* App ka font use karega */
         font-size: 13px !important;
+        font-weight: 600 !important;
+        line-height: 1.5 !important;
         display: flex !important;
         align-items: center !important;
+        cursor: pointer !important;
+        white-space: nowrap !important;
+      }
+
+      /* 3. Text ko Sundar Banayein (Slate-600 Color) */
+      .goog-te-gadget-simple > span {
+        color: #475569 !important; /* Slate-600 */
+        vertical-align: middle !important;
       }
       
-      /* Text Color styling */
-      .goog-te-gadget-simple span {
-        color: #64748b !important; /* Slate 500 */
-        font-weight: 600 !important;
+      /* "Select Language" ke baad wala Pipe '|' aur Arrow Hide/Style karein */
+      .goog-te-gadget-simple .goog-te-menu-value {
+        color: #475569 !important;
+        margin-left: 4px !important;
       }
       
-      /* Dark Mode Overrides for Translate Text */
-      html.dark .goog-te-gadget-simple span {
-        color: #94a3b8 !important; /* Slate 400 */
+      /* Pipe '|' ko hide kar dein taaki clean dikhe */
+      .goog-te-gadget-simple .goog-te-menu-value span:nth-child(2) {
+        display: none !important; 
       }
+
+      /* Arrow ko thoda light color dein */
+      .goog-te-gadget-simple .goog-te-menu-value span:last-child {
+        color: #94a3b8 !important; /* Slate-400 */
+        font-size: 10px !important; /* Chhota Arrow */
+      }
+
+      /* 4. DARK MODE SUPPORT (Agar user dark mode on kare) */
+      html.dark .goog-te-gadget-simple > span,
+      html.dark .goog-te-gadget-simple .goog-te-menu-value {
+        color: #e2e8f0 !important; /* Slate-200 Light Text */
+      }
+      html.dark .goog-te-gadget-simple .goog-te-menu-value span:last-child {
+        color: #94a3b8 !important;
+      }
+
+      /* 5. Google Icon aur Tooltips ko Hide karein */
+      .goog-te-gadget-icon { display: none !important; }
+      .goog-tooltip { display: none !important; }
+      .goog-tooltip:hover { display: none !important; }
       
-      /* Hide Google Icon */
-      .goog-te-gadget-icon {
-        display: none !important;
+      /* Google ka Highlight (Blue background) hatayein */
+      .goog-text-highlight { 
+        background-color: transparent !important; 
+        box-shadow: none !important; 
+        border: none !important;
       }
-      
-      /* Hide Tooltips */
-      .goog-tooltip {
-        display: none !important;
-      }
-      .goog-tooltip:hover {
-        display: none !important;
-      }
-      .goog-text-highlight {
-        background-color: transparent !important;
-        border: none !important; 
-        box-shadow: none !important;
+
+      /* Dropdown Menu ko thoda modern banayein */
+      .goog-te-menu-frame {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
       }
     </style>
 
