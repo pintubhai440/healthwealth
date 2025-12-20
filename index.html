@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediGuard AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class', // ✅ Ye line zaroori hai manual toggle ke liye
+    theme: {
+      extend: {
+        colors: {
+          slate: {
+            850: '#1e293b', // Dark mode ke liye extra colors
+            950: '#020617',
+          }
+        }
+      }
+    }
+  }
+</script>
     <style>
       /* Custom scrollbar for chat areas */
       .scrollbar-hide::-webkit-scrollbar {
