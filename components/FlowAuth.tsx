@@ -142,7 +142,7 @@ export const FlowAuth: React.FC<FlowAuthProps> = ({ onLogin }) => {
                     <User className="w-6 h-6 text-white" />
                 </div>
                 <div className="text-left">
-                    <h3 className="font-bold text-slate-800 text-lg">Customer (End User)</h3>
+                    <h3 className="font-bold text-slate-800 text-lg">Personal</h3>
                     <p className="text-xs text-blue-600 font-medium">Personal & Family Use</p>
                 </div>
                 <ArrowRight className="w-5 h-5 text-blue-400 ml-auto" />
