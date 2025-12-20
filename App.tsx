@@ -44,17 +44,19 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // ✅ GOOGLE TRANSLATE COMPONENT (Reusable)
+  // ✅ GOOGLE TRANSLATE COMPONENT (IMPROVED UI)
   const GoogleTranslateWidget = () => {
     useEffect(() => {
-      // Jab component mount ho, widget initialize karein (agar script load ho chuki hai)
+      // Script load hone ka wait aur widget init
       if ((window as any).google && (window as any).google.translate && (window as any).google.translate.TranslateElement) {
-         // Widget already exists check can be tricky, simple way is re-init
-         // Note: Google widget is global, but we need to target the ID.
-         // Sometimes react re-renders wipe the div content.
          try {
+             // Purane element ko clear karke fresh render karein
+             const existing = document.getElementById('google_translate_element');
+             if(existing) existing.innerHTML = ''; 
+
              new (window as any).google.translate.TranslateElement({
                 pageLanguage: 'en',
+                // 'SIMPLE' layout sabse clean hota hai
                 layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
                 autoDisplay: false,
              }, 'google_translate_element');
@@ -63,13 +65,16 @@ export default function App() {
     }, []);
 
     return (
-        <div className="flex items-center gap-1 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1 bg-white dark:bg-slate-800 shadow-sm">
-            <Globe className="w-4 h-4 text-slate-400" />
-            <div id="google_translate_element" className="min-w-[100px]" />
+        <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md shadow-sm hover:shadow-md hover:border-teal-200 dark:hover:border-teal-800 transition-all cursor-pointer group">
+            {/* Animated Globe Icon */}
+            <Globe className="w-4 h-4 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+            
+            {/* Google Widget Container - Isme ab CSS styling apply hogi */}
+            <div id="google_translate_element" className="translate-text-fix min-w-[90px]" />
         </div>
     );
   };
-
+  
   // --- HANDLERS ---
   const handleLogin = (role: string, name: string, code?: string) => {
     setUserRole(role);
