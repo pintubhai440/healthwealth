@@ -6,11 +6,11 @@ import { DermCheck } from './components/DermCheck';
 import { RecoveryCoach } from './components/RecoveryCoach';
 import { FlowAuth } from './components/FlowAuth';
 import { DoctorDashboard } from './components/DoctorDashboard';
-// ✅ Icons Updated (Key, UserCheck, Sun, Moon added)
+// ✅ Icons import
 import { 
   HeartPulse, Stethoscope, Scan, Activity, ChevronRight, 
   Pill, ShieldPlus, LogOut, Siren, ShieldCheck, FileText, Key, UserCheck,
-  Sun, Moon 
+  Sun, Moon, Globe // ✅ Globe icon added
 } from 'lucide-react';
 
 export default function App() {
@@ -20,23 +20,20 @@ export default function App() {
   const [userName, setUserName] = useState<string>('');
   const [view, setView] = useState<FeatureView>(FeatureView.HOME);
 
-  // ✅ 1. Patient ke liye Secret Code State
+  // ✅ Patient & Guardian States
   const [patientSecretCode, setPatientSecretCode] = useState("P-1234"); 
-  // ✅ 2. Guardian ke liye Connection State
   const [guardianConnectedTo, setGuardianConnectedTo] = useState<string>('');
 
-  // ✅ DARK MODE STATE - localStorage se load karo
+  // ✅ DARK MODE STATE
   const [darkMode, setDarkMode] = useState(() => {
-    // Check localStorage aur system preference
-    const savedTheme = localStorage.getItem('mediguard-theme');
-    if (savedTheme) {
-      return savedTheme === 'dark';
+    if (typeof window !== 'undefined') {
+        const savedTheme = localStorage.getItem('mediguard-theme');
+        return savedTheme ? savedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-    // System preference check karo
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return false;
   });
 
-  // ✅ DARK MODE TOGGLE LOGIC (Effect with localStorage)
+  // ✅ DARK MODE EFFECT
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -47,27 +44,50 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // ✅ GOOGLE TRANSLATE COMPONENT (Reusable)
+  const GoogleTranslateWidget = () => {
+    useEffect(() => {
+      // Jab component mount ho, widget initialize karein (agar script load ho chuki hai)
+      if ((window as any).google && (window as any).google.translate && (window as any).google.translate.TranslateElement) {
+         // Widget already exists check can be tricky, simple way is re-init
+         // Note: Google widget is global, but we need to target the ID.
+         // Sometimes react re-renders wipe the div content.
+         try {
+             new (window as any).google.translate.TranslateElement({
+                pageLanguage: 'en',
+                layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
+                autoDisplay: false,
+             }, 'google_translate_element');
+         } catch(e) { console.log("Translator Init Error", e); }
+      }
+    }, []);
+
+    return (
+        <div className="flex items-center gap-1 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1 bg-white dark:bg-slate-800 shadow-sm">
+            <Globe className="w-4 h-4 text-slate-400" />
+            <div id="google_translate_element" className="min-w-[100px]" />
+        </div>
+    );
+  };
+
   // --- HANDLERS ---
   const handleLogin = (role: string, name: string, code?: string) => {
     setUserRole(role);
     setUserName(name);
     
     if (role === 'patient') {
-        // Patient login kare toh code generate kar lo (Simulation)
         const randomCode = "P-" + Math.floor(1000 + Math.random() * 9000);
         setPatientSecretCode(randomCode);
     } 
     else if (role === 'guardian') {
-        // Guardian Logic: Check Code
         if (code && code.startsWith("P-")) {
-           setGuardianConnectedTo("Rahul Kumar (Patient)"); // Demo Patient Name
-           setView(FeatureView.GUARDIAN); // Seedha Guardian Verify par le jao
+           setGuardianConnectedTo("Rahul Kumar (Patient)");
+           setView(FeatureView.GUARDIAN);
         } else {
            alert("Invalid Patient Code! Please ask the patient for the correct code starting with P-");
            return;
         }
     }
-    
     setIsAuthenticated(true);
   };
 
@@ -82,32 +102,15 @@ export default function App() {
     alert("🆘 SOS ALERT SENT! \n\nEmergency contacts and nearby hospitals have been notified with your live location.");
   };
 
-  // ✅ IMPROVED Theme Toggle Component with better UI
+  // ✅ Theme Toggle Component
   const ThemeToggle = () => (
-    <div className="flex items-center">
-      <button 
-        onClick={() => setDarkMode(!darkMode)} 
-        className="relative p-2 rounded-full transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-yellow-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 group"
-        title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-        aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-      >
-        {darkMode ? (
-          <>
-            <Sun className="w-5 h-5" />
-            <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-              Light Mode
-            </span>
-          </>
-        ) : (
-          <>
-            <Moon className="w-5 h-5" />
-            <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-              Dark Mode
-            </span>
-          </>
-        )}
-      </button>
-    </div>
+    <button 
+      onClick={() => setDarkMode(!darkMode)} 
+      className="p-2 rounded-full transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-yellow-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm"
+      title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+    >
+      {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+    </button>
   );
 
   // --- 1. AUTH SCREEN CHECK ---
@@ -115,8 +118,9 @@ export default function App() {
     return (
       <div className={darkMode ? 'dark' : ''}>
         <FlowAuth onLogin={handleLogin} />
-        {/* Auth screen ke liye bhi theme toggle */}
-        <div className="fixed top-4 right-4 z-50">
+        {/* ✅ Auth Screen par Translator & Theme Toggle */}
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
+          <GoogleTranslateWidget />
           <ThemeToggle />
         </div>
       </div>
@@ -137,6 +141,7 @@ export default function App() {
              </div>
              
              <div className="flex items-center gap-3">
+                 <div className="hidden md:block"><GoogleTranslateWidget /></div> {/* ✅ Translator Added */}
                  <ThemeToggle />
                  <div className="text-right hidden sm:block">
                     <p className="text-xs text-slate-400 font-bold uppercase">Logged in as</p>
@@ -167,6 +172,7 @@ export default function App() {
                    <h1 className="text-xl font-bold">MediGuard <span className="text-teal-200">Connect</span></h1>
                 </div>
                 <div className="flex items-center gap-3">
+                    <div className="hidden md:block opacity-90"><GoogleTranslateWidget /></div> {/* ✅ Translator Added */}
                     <ThemeToggle />
                     <div className="text-right hidden sm:block">
                        <p className="text-[10px] text-teal-200 font-bold uppercase">Guardian</p>
@@ -180,7 +186,6 @@ export default function App() {
            </nav>
 
            <main className="max-w-3xl mx-auto px-4 py-8">
-               {/* Patient Info Card */}
                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 mb-6 flex items-center justify-between animate-in slide-in-from-top-4 transition-colors">
                    <div>
                        <h2 className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wide mb-1">Monitoring Patient</h2>
@@ -195,7 +200,6 @@ export default function App() {
                    </div>
                </div>
 
-               {/* Guardian Features */}
                <div className="space-y-6">
                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-teal-100 dark:border-teal-900/30 overflow-hidden transition-colors">
                        <div className="bg-teal-50 dark:bg-teal-900/20 p-4 border-b border-teal-100 dark:border-teal-900/30">
@@ -273,14 +277,8 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-3">
+             <div className="hidden sm:block"><GoogleTranslateWidget /></div> {/* ✅ Translator Added */}
              <ThemeToggle />
-             
-             {/* Theme Indicator */}
-             <div className="hidden sm:flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-               <span className={`px-2 py-1 rounded-full ${darkMode ? 'bg-slate-800 text-yellow-300' : 'bg-slate-200 text-slate-600'}`}>
-                 {darkMode ? 'Dark' : 'Light'}
-               </span>
-             </div>
              
              <button onClick={handleSOS} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2 animate-pulse shadow-lg shadow-red-200 dark:shadow-red-900/50">
                 <Siren className="w-4 h-4" /> <span className="hidden md:inline">SOS</span>
@@ -324,14 +322,16 @@ export default function App() {
                 <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-2 uppercase tracking-wide ${userRole === 'guardian' ? 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200' : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'}`}>
                     {userRole === 'guardian' ? '🛡️ Guardian Mode' : '👤 Patient Dashboard'}
                 </span>
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold mb-2 uppercase tracking-wide ${darkMode ? 'bg-slate-800 text-yellow-300' : 'bg-slate-200 text-slate-600'}`}>
-                    {darkMode ? '🌙 Dark Mode' : '☀️ Light Mode'}
-                </span>
               </div>
               <h2 className="text-3xl font-bold text-slate-800 dark:text-white">Hello, {userName || 'Patient'}</h2>
               <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto">
                 {userRole === 'guardian' ? "Monitoring patient adherence and alerts in real-time." : "Instant triage, medication verification, and recovery coaching."}
               </p>
+            </div>
+
+            {/* 🔥 GOOGLE TRANSLATOR (MOBILE VIEW - EXTRA VISIBILITY) */}
+            <div className="md:hidden flex justify-center mb-6">
+                <GoogleTranslateWidget />
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -362,16 +362,9 @@ export default function App() {
         {/* ACTIVE FEATURE VIEW */}
         <div className="animate-in zoom-in-95 duration-300">
             {view === FeatureView.TRIAGE && <TriageBot />}
-            
-            {/* 1. MediScanner (Pill ID Mode) */}
             {view === FeatureView.MEDISCAN && <MediScanner defaultMode="ID" hideTabs={true} />}
-            
-            {/* 2. Guardian Verify (Video Verify Mode) */}
             {view === FeatureView.GUARDIAN && <MediScanner defaultMode="VERIFY" hideTabs={true} />}
-
-            {/* ✅ 3. Lab Report Mode */}
             {view === FeatureView.REPORT && <MediScanner defaultMode="REPORT" hideTabs={true} />}
-            
             {view === FeatureView.DERMCHECK && <DermCheck />}
             {view === FeatureView.RECOVERY && <RecoveryCoach />}
         </div>
