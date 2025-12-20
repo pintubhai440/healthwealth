@@ -5,7 +5,8 @@ export enum FeatureView {
   DERMCHECK = 'DERMCHECK',
   RECOVERY = 'RECOVERY',
   GUARDIAN = 'GUARDIAN', // ✅ Ye line add karein (5th Box ke liye)
-  REPORT = 'REPORT' // ✅ ये लाइन जोड़ें (Lab Reports के लिए)
+  REPORT = 'REPORT', // ✅ ये लाइन जोड़ें (Lab Reports के लिए)
+  TRANSLATOR = 'TRANSLATOR'
 }
 
 export interface PatientProfile {
