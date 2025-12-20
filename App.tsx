@@ -277,7 +277,7 @@ export default function App() {
             <div className="mt-12 bg-slate-800 text-white p-6 rounded-2xl flex items-center justify-between shadow-xl">
                <div>
                   <h3 className="font-bold text-lg mb-1 flex items-center gap-2"><ShieldPlus className="w-5 h-5"/> Team AURAlytics</h3>
-                  <p className="text-slate-400 text-sm">Prototype Version 1.0</p>
+                  <p className="text-slate-400 text-sm">MVP Version 2.0</p>
                </div>
             </div>
           </div>
