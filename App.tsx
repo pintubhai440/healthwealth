@@ -44,30 +44,42 @@ export default function App() {
     }
   }, [darkMode]);
 
-// ✅ GOOGLE TRANSLATE COMPONENT (FIXED UI)
+// ✅ GOOGLE TRANSLATE COMPONENT (ROBUST FIX)
   const GoogleTranslateWidget = () => {
     useEffect(() => {
-      if ((window as any).google && (window as any).google.translate && (window as any).google.translate.TranslateElement) {
-         try {
-             const existing = document.getElementById('google_translate_element');
-             if(existing) existing.innerHTML = ''; 
+      // 1. Initialize function jo widget banayega
+      const initWidget = () => {
+        if ((window as any).google && (window as any).google.translate) {
+            try {
+                const element = document.getElementById('google_translate_element');
+                // Check karein ki element hai aur usme pehle se widget nahi hai
+                if (element && !element.hasChildNodes()) {
+                    new (window as any).google.translate.TranslateElement({
+                        pageLanguage: 'en',
+                        layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
+                        autoDisplay: false,
+                    }, 'google_translate_element');
+                }
+            } catch (e) { console.log("Translator Widget Error:", e); }
+        }
+      };
 
-             new (window as any).google.translate.TranslateElement({
-                pageLanguage: 'en',
-                layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
-                autoDisplay: false,
-             }, 'google_translate_element');
-         } catch(e) { console.log("Translator Init Error", e); }
+      // 2. Race Condition Fix:
+      // Agar Google script pehle se load hai -> Turant Init karo
+      if ((window as any).google && (window as any).google.translate) {
+         initWidget();
+      } 
+      // Agar script abhi load ho raha hai -> Global Callback set karo
+      else {
+         (window as any).googleTranslateElementInit = initWidget;
       }
     }, []);
 
     return (
-        // overflow-visible zaroori hai taaki list neeche tak khule
         <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md shadow-sm hover:shadow-md hover:border-teal-200 dark:hover:border-teal-800 transition-all cursor-pointer group overflow-visible z-50">
-            {/* Animated Globe Icon */}
             <Globe className="w-4 h-4 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0" />
             
-            {/* Widget Container - Width badha di taaki text poora aaye */}
+            {/* Widget Container - Ensure Min Width */}
             <div id="google_translate_element" className="translate-text-fix min-w-[100px] flex items-center justify-center overflow-visible" />
         </div>
     );
