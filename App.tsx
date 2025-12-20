@@ -44,19 +44,16 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // ✅ GOOGLE TRANSLATE COMPONENT (IMPROVED UI)
+// ✅ GOOGLE TRANSLATE COMPONENT (FIXED UI)
   const GoogleTranslateWidget = () => {
     useEffect(() => {
-      // Script load hone ka wait aur widget init
       if ((window as any).google && (window as any).google.translate && (window as any).google.translate.TranslateElement) {
          try {
-             // Purane element ko clear karke fresh render karein
              const existing = document.getElementById('google_translate_element');
              if(existing) existing.innerHTML = ''; 
 
              new (window as any).google.translate.TranslateElement({
                 pageLanguage: 'en',
-                // 'SIMPLE' layout sabse clean hota hai
                 layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
                 autoDisplay: false,
              }, 'google_translate_element');
@@ -65,12 +62,13 @@ export default function App() {
     }, []);
 
     return (
-        <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md shadow-sm hover:shadow-md hover:border-teal-200 dark:hover:border-teal-800 transition-all cursor-pointer group">
+        // overflow-visible zaroori hai taaki list neeche tak khule
+        <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1.5 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md shadow-sm hover:shadow-md hover:border-teal-200 dark:hover:border-teal-800 transition-all cursor-pointer group overflow-visible z-50">
             {/* Animated Globe Icon */}
-            <Globe className="w-4 h-4 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors" />
+            <Globe className="w-4 h-4 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors flex-shrink-0" />
             
-            {/* Google Widget Container - Isme ab CSS styling apply hogi */}
-            <div id="google_translate_element" className="translate-text-fix min-w-[90px]" />
+            {/* Widget Container - Width badha di taaki text poora aaye */}
+            <div id="google_translate_element" className="translate-text-fix min-w-[100px] flex items-center justify-center overflow-visible" />
         </div>
     );
   };
