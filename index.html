@@ -96,6 +96,27 @@
         box-shadow: none !important; 
         border: none !important;
       }
+      /* YEH NAYA CSS ADD KAREIN (Text Visibility ke liye) */
+      .goog-te-gadget-simple span {
+        color: #475569 !important; /* Slate-600 Force Color */
+        font-weight: 600 !important;
+      }
+      
+      /* Dark mode fix */
+      html.dark .goog-te-gadget-simple span {
+        color: #e2e8f0 !important;
+      }
+
+      /* Container ko force show karein */
+      #google_translate_element {
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      /* Google ka default frame hide karein */
+      .goog-te-banner-frame { display: none !important; }
+      body { top: 0 !important; 
+           }
     </style>
 
     <script type="importmap">
